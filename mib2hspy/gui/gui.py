@@ -5,12 +5,25 @@ from pathlib import Path
 
 
 class LogStream(object):
+    """
+    Class for handling logging to stream objects.
+    """
     def __init__(self, logger, log_level=logging.DEBUG):
+        """
+        Create a log stream
+        :param logger: logging.Logger object
+        :param log_level: logging level
+        """
         self.logger = logger
         self.log_level = log_level
         self.linebuf = ''
 
     def write(self, buf):
+        """
+        Log a message and write it to the stream
+        :param buf:
+        :return:
+        """
         for line in buf.rstrip().splitlines():
             self.logger.log(self.log_level, line.rstrip())
 
