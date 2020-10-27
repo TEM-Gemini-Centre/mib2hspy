@@ -139,6 +139,8 @@ class Parameter(object):
         if isinstance(self.value, str):
             if self.value == '' or self.value == 'None':
                 return False
+            else:
+                return True
         return not isnan(self.value)
 
     def as_dict(self):
@@ -181,7 +183,7 @@ class CalibratedParameter(Parameter):
         return '{self.value:{f}} ({self.nominal_value:{f}}) {self.units}'.format(self=self, f=format_spec)
 
     def set_nominal_value(self, newvalue):
-        if not isinstance(newvalue, type(self.value)):
+        if not isinstance(newvalue, (int, float)):
             raise TypeError(
                 'Invalid nominal value {nomval!r}. Nominal value must be same type as value {self.value!r}'.format(
                     nomval=newvalue, self=self))
