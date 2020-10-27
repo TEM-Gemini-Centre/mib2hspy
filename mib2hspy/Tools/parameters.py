@@ -2,12 +2,14 @@ from math import nan, isnan
 from datetime import datetime
 from tabulate import tabulate
 import pandas as pd
+import numpy as np
 
 
 class Parameter(object):
     """
     A parameter
     """
+
     def __init__(self, parameter_name, value, units):
         """
         Create a parameter
@@ -157,6 +159,7 @@ class CalibratedParameter(Parameter):
     """
     A calibrated parameter with a nominal value in addition to its calibrated value.
     """
+
     def __init__(self, parameter_name, value, units, nominal_value):
         """
         Create a calibrated parameter
@@ -642,3 +645,105 @@ class Microscope(object):
         else:
             params = defined_parameters
         return params
+
+
+class Detector(object):
+    """
+    A detector object
+    """
+    def __init__(self,
+                 nx=Parameter('Pixels x', nan, 'px'),
+                 ny=Parameter('Pixels y', nan, 'px'),
+                 dx=Parameter('Pixels size x', nan, 'm'),
+                 dy=Parameter('Pixels size y', nan, 'm'),
+                 ):
+        """
+        Create a detector object.
+        :param nx: The number of pixels in x-direction
+        :param ny: The number of pixels in y-direction
+        :param dx: The pixel size in x-direction
+        :param dy: The pixel size in y-direction
+        :type nx: int
+        :type ny: int
+        :type dx: float
+        :type dy: float
+        """
+
+        if not isinstance(nx, Parameter):
+            raise TypeError()
+        if not isinstance(ny, Parameter):
+            raise TypeError()
+        if not isinstance(dx, Parameter):
+            raise TypeError()
+        if not isinstance(dy, Parameter):
+            raise TypeError()
+
+        super(Detector, self).__init__()
+        self.nx = nx
+        self.ny = ny
+        self.dx = dx
+        self.dy = dy
+
+    def __str__(self):
+        return '{self.__class__.__name__} with {self.nx:} x {self.ny} pixels and pixel sizes [m] {self.dx} and {self.dy})'.format(
+            self=self)
+
+    def get_shape(self):
+        """
+        Get the number of pixels in x and y directions
+        :return: shape as np.array((Nx, Ny))
+        :rtype: numpy.ndarray
+        """
+        return np.array([self.nx.value, self.ny.value])
+
+    def get_pixel_size(self):
+        """
+        Get the pixel size as an array
+        :return: pixel sizes in m as np.array((Dx, Dy))
+        :rtype: numpy.ndarray
+        """
+        return np.array([self.dx.value, self.dy.value])
+
+    def get_physical_size(self):
+        """
+        Get the physical size of the detector.
+        :return: The physical size of the detector in m as np.array((float_x, float_y))
+        :rtype: numpy.ndarray
+        """
+        return self.get_shape() * self.get_pixel_size()
+
+    def set_nx(self, value):
+        """
+        Sets the number of pixels in x-direction.
+        :param value: The number of pixels in x-direction
+        :type value: int
+        :return:
+        """
+        self.nx.set_value(value)
+
+    def set_ny(self, value):
+        """
+        Sets the number of pixels in y-direction
+        :param value: The number of pixels in y-direction
+        :type value: int
+        :return:
+        """
+        self.ny.set_value(value)
+
+    def set_dx(self, value):
+        """
+        Sets the pixel size in x-direction
+        :param value: The pixel size in m
+        :type value: float
+        :return:
+        """
+        self.dx.set_value(value)
+
+    def set_dy(self, value):
+        """
+        Sets the pixel size in y-direction
+        :param value: The pixel size in m
+        :type value: float
+        :return:
+        """
+        self.dy.set_value(value)
