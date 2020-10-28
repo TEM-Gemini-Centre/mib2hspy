@@ -28,10 +28,13 @@ class LogStream(object):
             self.logger.log(self.log_level, line.rstrip())
 
 
-def main():
-    now = datetime.now()
-    # Create debug file
-    debug_file = Path('./logs/{stamp}_debug.log'.format(stamp=now.strftime('%Y-%m-%d_%H:%M:%S')))
+def main(logfile=None):
+    # Create debug file if not provided
+    if logfile is None:
+        now = datetime.now()
+        debug_file = Path('./logs/{stamp}_debug.log'.format(stamp=now.strftime('%Y-%m-%d_%H:%M:%S')))
+    else:
+        debug_file = Path(logfile)
     debug_file.parent.mkdir(parents=True, exist_ok=True)
     with debug_file.open('w') as f:
         f.close()
@@ -46,6 +49,7 @@ def main():
     sys.stdout = LogStream(logging.getLogger(), logging.DEBUG)
     sys.stderr = LogStream(logging.getLogger(), logging.ERROR)
 
+    logging.debug('Hei')
     # app = QtWidgets.QApplication(sys.argv)
     # window = MainWindow()
     # window.show()
@@ -55,4 +59,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main('debug.log')
