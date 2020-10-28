@@ -3,6 +3,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from .tools import Worker, DataFrameModel, StatusIndicator
+from ..Tools import Microscope, Detector, MedipixHDRcontent
 
 class LogStream(object):
     """
@@ -26,6 +28,9 @@ class LogStream(object):
         """
         for line in buf.rstrip().splitlines():
             self.logger.log(self.log_level, line.rstrip())
+
+
+
 
 
 def main(logfile=None):

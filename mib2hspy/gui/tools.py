@@ -1,9 +1,12 @@
 import sys
 import pandas as pd
-
-from PyQt5 import QtCore
-from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QAbstractTableModel, QRunnable
 import traceback
+
+from PyQt5 import QtCore, QtWidgets
+from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QAbstractTableModel, QRunnable
+from PyQt5.QtGui import QPixmap
+
+from pathlib import Path
 
 
 class WorkerSignals(QObject):
@@ -138,3 +141,134 @@ class DataFrameModel(QAbstractTableModel):
         }
         return roles
 
+
+class Error(Exception):
+    pass
+
+
+class StatusError(Error):
+    pass
+
+
+class Status(QObject):
+    """A status object for keeping track of the status of other objects"""
+    statusChanged = pyqtSignal([], [str], [int], [bool], [QObject])
+    active_labels = ['Active', 'On', 1, True]
+    busy_labels = ['Busy', 'Pending', 2]
+    inactive_labels = ['Inactive', 'Off', 0, False]
+    accepted_statuses = active_labels + busy_labels + inactive_labels
+
+    def __init__(self, initial_status, *args, **kwargs):
+        """
+        Initialize a status object.
+
+        A status object has three different status categories, "Inactive": 0, "Active": 1, and "Busy": 2. The different categories have additional labels and values.
+
+        :param initial_status: The initial status of the object.
+        :param args: Optional positional arguments passed to QObject()
+        :param kwargs: Optional keyword arguments passed to QObject()
+        """
+        if not initial_status in self.accepted_statuses:
+            raise StatusError(
+                'Status "{status}" is not an accepted status. Please set status to one of the following: {self.accepted_statuses}'.format(
+                    status=initial_status, self=self))
+        super(Status, self).__init__(*args, **kwargs)
+
+        self._status = initial_status
+
+    def __str__(self):
+        if self.status == 0:
+            label = 'Inactive'
+        elif self.status == 1:
+            label = 'Active'
+        elif self.status == 2:
+            label = 'Busy'
+        else:
+            label = self.status
+        return '{self.__class__.__name__}: {self.status} ({label})'.format(self=self, label=label)
+
+    @property
+    def status(self):
+        if self._status in self.inactive_labels:
+            return 0
+        elif self._status in self.active_labels:
+            return 1
+        elif self._status in self.pending_labels:
+            return 2
+        else:
+            raise StatusError('Status of {self} can not be categorized!'.format(self=self))
+
+    @status.setter
+    def status(self, status):
+        if not status in self.accepted_statuses:
+            raise StatusError(
+                'Status "{status}" is not an accepted status. Please set status to one of the following: {self.accepted_statuses}'.format(
+                    status=status, self=self))
+        self._status = status
+        self.statusChanged.emit()
+        self.statusChanged[type(self.status)].emit(self.status)
+        self.statusChanged[QObject].emit(self)
+
+    @pyqtSlot()
+    def setInactive(self):
+        self.status = 0
+
+    @pyqtSlot()
+    def setActive(self):
+        self.status = 1
+
+    @pyqtSlot()
+    def setBusy(self):
+        self.status = 2
+
+    @pyqtSlot(int)
+    @pyqtSlot(str)
+    @pyqtSlot(bool)
+    def setStatus(self, status):
+        self.status = status
+
+    def is_inactive(self):
+        return self.status in self.inactive_labels
+
+    def is_active(self):
+        return self.status in self.active_labels
+
+    def is_busy(self):
+        return self.status in self.busy_labels
+
+
+class StatusIndicator(QtWidgets.QLabel):
+    """A status indicator widget"""
+    inactive_pixmap_path = Path('./source/icons/Off.png')
+    active_pixmap_path = Path('./source/icons/On.png')
+    busy_pixmap_path = Path('./source/icons/Busy.png')
+    none_pixmap_path = Path('./source/icons/None.png')
+
+    def __init__(self, *args, initial_status=None, **kwargs):
+        """
+        Initialize a status indicator.
+        :param args: Optional positional arguments passed to QLabel()
+        :param initial_status: The initial status of the indicator
+        :param kwargs: Optional keyword arguments passed to QLabel()
+        """
+        super(StatusIndicator, self).__init__(*args, **kwargs)
+
+        self.status = Status(initial_status)
+        self.setScaledContents(True)
+        self.status.statusChanged.connect(self.reDraw)
+
+    @pyqtSlot()
+    def reDraw(self):
+        if self.status.is_inactive():
+            pixmap_path = self.inactive_pixmap_path
+        elif self.status.is_active():
+            pixmap_path = self.active_pixmap_path
+        elif self.status.is_busy():
+            pixmap_path = self.busy_pixmap_path
+        else:
+            pixmap_path = self.none_pixmap_path
+        pixmap = QPixmap(str(pixmap_path))
+        if pixmap.isNull():
+            raise ValueError(
+                'Image for status {self.status} is Null (path: "{path}"!'.format(self=self, path=pixmap_path))
+        self.setPixmap(pixmap)
