@@ -29,6 +29,11 @@ class LogStream(object):
 
 
 def main(logfile=None):
+    """
+    Intialize a standard GUI with logging
+    :param logfile: path to output log (debug) file. DEfault is None, in which case a new timestamped logfile will be created under ./logs/
+    :return:
+    """
     # Create debug file if not provided
     if logfile is None:
         now = datetime.now()
