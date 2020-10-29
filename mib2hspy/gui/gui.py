@@ -2,14 +2,14 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from PyQt5 import uic, QtWidgets
 
-from .tools import Worker, DataFrameModel, StatusIndicator
-from ..Tools import Microscope, Detector, MedipixHDRcontent
 
 class LogStream(object):
     """
     Class for handling logging to stream objects.
     """
+
     def __init__(self, logger, log_level=logging.DEBUG):
         """
         Create a log stream
@@ -30,7 +30,10 @@ class LogStream(object):
             self.logger.log(self.log_level, line.rstrip())
 
 
-
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self, *args, **kwargs):
+        super(MainWindow, self).__init__(*args, **kwargs)
+        uic.loadUi('./source/QTCmib2hspy/mainwindow.ui', self)
 
 
 def main(logfile=None):
@@ -60,6 +63,14 @@ def main(logfile=None):
     sys.stderr = LogStream(logging.getLogger(), logging.ERROR)
 
     logging.debug('Hei')
+
+    myqui = QtWidgets.QApplication(sys.argv)
+
+    view = MainWindow()
+    view.show()
+
+    sys.exit(myqui.exec_())
+
     # app = QtWidgets.QApplication(sys.argv)
     # window = MainWindow()
     # window.show()

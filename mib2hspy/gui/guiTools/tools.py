@@ -156,7 +156,8 @@ class Status(QObject):
     active_labels = ['Active', 'On', 1, True]
     busy_labels = ['Busy', 'Pending', 2]
     inactive_labels = ['Inactive', 'Off', 0, False]
-    accepted_statuses = active_labels + busy_labels + inactive_labels
+    none_labels = ['None', -1., None]
+    accepted_statuses = active_labels + busy_labels + inactive_labels +  none_labels
 
     def __init__(self, initial_status, *args, **kwargs):
         """
@@ -183,6 +184,8 @@ class Status(QObject):
             label = 'Active'
         elif self.status == 2:
             label = 'Busy'
+        elif self.status == -1:
+            label = 'None'
         else:
             label = self.status
         return '{self.__class__.__name__}: {self.status} ({label})'.format(self=self, label=label)
@@ -195,6 +198,8 @@ class Status(QObject):
             return 1
         elif self._status in self.pending_labels:
             return 2
+        elif self._status in self.none_labels:
+            return -1
         else:
             raise StatusError('Status of {self} can not be categorized!'.format(self=self))
 
@@ -221,6 +226,10 @@ class Status(QObject):
     def setBusy(self):
         self.status = 2
 
+    @pyqtSlot()
+    def setNone(self):
+        self.status = -1
+
     @pyqtSlot(int)
     @pyqtSlot(str)
     @pyqtSlot(bool)
@@ -235,6 +244,9 @@ class Status(QObject):
 
     def is_busy(self):
         return self.status in self.busy_labels
+
+    def is_none(self):
+        return self.status in self.none_labels
 
 
 class StatusIndicator(QtWidgets.QLabel):
