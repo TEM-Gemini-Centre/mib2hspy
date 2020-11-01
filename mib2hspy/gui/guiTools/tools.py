@@ -8,6 +8,22 @@ from PyQt5.QtGui import QPixmap
 
 from pathlib import Path
 
+import logging
+
+class QTextEditLogger(logging.Handler, QObject):
+    appendPlainText = pyqtSignal(str)
+
+    def __init__(self, widget):
+        super().__init__()
+        QObject.__init__(self)
+        #self.widget = QtWidgets.QPlainTextEdit(parent)
+        self.widget = widget
+        self.widget.setReadOnly(True)
+        self.appendPlainText.connect(self.widget.appendPlainText)
+
+    def emit(self, record):
+        msg = self.format(record)
+        self.appendPlainText.emit(msg)
 
 class WorkerSignals(QObject):
     """
@@ -30,7 +46,7 @@ class WorkerSignals(QObject):
     """
     finished = pyqtSignal()
     error = pyqtSignal(tuple)
-    result = pyqtSignal(str)
+    result = pyqtSignal([], [int], [str], [bool], [object])
     progress = pyqtSignal(int)
 
 
@@ -56,9 +72,10 @@ class Worker(QRunnable):
         self.args = args
         self.kwargs = kwargs
         self.signals = WorkerSignals()
+        self.result = None
 
         # Add the callback to our kwargs
-        self.kwargs['progress_callback'] = self.signals.progress
+        #self.kwargs['progress_callback'] = self.signals.progress
 
     @pyqtSlot()
     def run(self):
@@ -68,13 +85,16 @@ class Worker(QRunnable):
 
         # Retrieve args/kwargs here; and fire processing using them
         try:
-            result = self.fn(*self.args, **self.kwargs)
+            self.result = self.fn(*self.args, **self.kwargs)
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
         else:
-            self.signals.result.emit(result)  # Return the result of the processing
+            try:
+                self.signals.result[type(self.result)].emit(self.result)
+            except Exception:
+                self.signals.result[object].emit(self.result)  # Return the result of the processing
         finally:
             self.signals.finished.emit()  # Done
 
@@ -150,103 +170,102 @@ class StatusError(Error):
     pass
 
 
-class Status(QObject):
-    """A status object for keeping track of the status of other objects"""
-    statusChanged = pyqtSignal([], [str], [int], [bool], [QObject])
-    active_labels = ['Active', 'On', 1, True]
-    busy_labels = ['Busy', 'Pending', 2]
-    inactive_labels = ['Inactive', 'Off', 0, False]
-    none_labels = ['None', -1., None]
-    accepted_statuses = active_labels + busy_labels + inactive_labels +  none_labels
-
-    def __init__(self, initial_status, *args, **kwargs):
-        """
-        Initialize a status object.
-
-        A status object has three different status categories, "Inactive": 0, "Active": 1, and "Busy": 2. The different categories have additional labels and values.
-
-        :param initial_status: The initial status of the object.
-        :param args: Optional positional arguments passed to QObject()
-        :param kwargs: Optional keyword arguments passed to QObject()
-        """
-        if not initial_status in self.accepted_statuses:
-            raise StatusError(
-                'Status "{status}" is not an accepted status. Please set status to one of the following: {self.accepted_statuses}'.format(
-                    status=initial_status, self=self))
-        super(Status, self).__init__(*args, **kwargs)
-
-        self._status = initial_status
-
-    def __str__(self):
-        if self.status == 0:
-            label = 'Inactive'
-        elif self.status == 1:
-            label = 'Active'
-        elif self.status == 2:
-            label = 'Busy'
-        elif self.status == -1:
-            label = 'None'
-        else:
-            label = self.status
-        return '{self.__class__.__name__}: {self.status} ({label})'.format(self=self, label=label)
-
-    @property
-    def status(self):
-        if self._status in self.inactive_labels:
-            return 0
-        elif self._status in self.active_labels:
-            return 1
-        elif self._status in self.pending_labels:
-            return 2
-        elif self._status in self.none_labels:
-            return -1
-        else:
-            raise StatusError('Status of {self} can not be categorized!'.format(self=self))
-
-    @status.setter
-    def status(self, status):
-        if not status in self.accepted_statuses:
-            raise StatusError(
-                'Status "{status}" is not an accepted status. Please set status to one of the following: {self.accepted_statuses}'.format(
-                    status=status, self=self))
-        self._status = status
-        self.statusChanged.emit()
-        self.statusChanged[type(self.status)].emit(self.status)
-        self.statusChanged[QObject].emit(self)
-
-    @pyqtSlot()
-    def setInactive(self):
-        self.status = 0
-
-    @pyqtSlot()
-    def setActive(self):
-        self.status = 1
-
-    @pyqtSlot()
-    def setBusy(self):
-        self.status = 2
-
-    @pyqtSlot()
-    def setNone(self):
-        self.status = -1
-
-    @pyqtSlot(int)
-    @pyqtSlot(str)
-    @pyqtSlot(bool)
-    def setStatus(self, status):
-        self.status = status
-
-    def is_inactive(self):
-        return self.status in self.inactive_labels
-
-    def is_active(self):
-        return self.status in self.active_labels
-
-    def is_busy(self):
-        return self.status in self.busy_labels
-
-    def is_none(self):
-        return self.status in self.none_labels
+# class Status(QObject):
+#     """A status object for keeping track of the status of other objects"""
+#     statusChanged = pyqtSignal([], [str], [int], [bool], [QObject])
+#     active_labels = ['Active', 'On', 1, True]
+#     busy_labels = ['Busy', 'Pending', 2]
+#     inactive_labels = ['Inactive', 'Off', 0, False]
+#     none_labels = ['None', -1., None]
+#     accepted_statuses = active_labels + busy_labels + inactive_labels + none_labels
+#
+#     def __init__(self, initial_status, *args, **kwargs):
+#         """
+#         Initialize a status object.
+#
+#         A status object has three different status categories, "Inactive": 0, "Active": 1, and "Busy": 2. The different categories have additional labels and values.
+#
+#         :param initial_status: The initial status of the object.
+#         :param args: Optional positional arguments passed to QObject()
+#         :param kwargs: Optional keyword arguments passed to QObject()
+#         """
+#         if not initial_status in self.accepted_statuses:
+#             raise StatusError(
+#                 'Status "{status}" is not an accepted status. Please set status to one of the following: {self.accepted_statuses}'.format(
+#                     status=initial_status, self=self))
+#         super(Status, self).__init__(*args, **kwargs)
+#         self._status = initial_status
+#
+#     @property
+#     def status(self):
+#         if self._status in self.inactive_labels:
+#             return 0
+#         elif self._status in self.active_labels:
+#             return 1
+#         elif self._status in self.pending_labels:
+#             return 2
+#         elif self._status in self.none_labels:
+#             return -1
+#         else:
+#             raise StatusError('Status of {self} can not be categorized!'.format(self=self))
+#
+#     @status.setter
+#     def status(self, status):
+#         if status not in self.accepted_statuses:
+#             raise StatusError(
+#                 'Status "{status}" is not an accepted status. Please set status to one of the following: {self.accepted_statuses}'.format(
+#                     status=status, self=self))
+#         self._status = status
+#         self.statusChanged.emit()
+#         self.statusChanged[type(self.status)].emit(self.status)
+#         self.statusChanged[QObject].emit(self)
+#
+#     def __str__(self):
+#         if self.status == 0:
+#             label = 'Inactive'
+#         elif self.status == 1:
+#             label = 'Active'
+#         elif self.status == 2:
+#             label = 'Busy'
+#         elif self.status == -1:
+#             label = 'None'
+#         else:
+#             label = self.status
+#         return '{self.__class__.__name__}: {self._status} ({label})'.format(self=self, label=label)
+#
+#     @pyqtSlot()
+#     def setInactive(self):
+#         self.status = 0
+#
+#     @pyqtSlot()
+#     def setActive(self):
+#         self.status = 1
+#
+#     @pyqtSlot()
+#     def setBusy(self):
+#         self.status = 2
+#
+#     @pyqtSlot()
+#     def setNone(self):
+#         self.status = -1
+#
+#     @pyqtSlot(int)
+#     @pyqtSlot(str)
+#     @pyqtSlot(bool)
+#     def setStatus(self, status):
+#         self.status = status
+#
+#     def is_inactive(self):
+#         return self.status in self.inactive_labels
+#
+#     def is_active(self):
+#         return self.status in self.active_labels
+#
+#     def is_busy(self):
+#         return self.status in self.busy_labels
+#
+#     def is_none(self):
+#         return self.status in self.none_labels
 
 
 class StatusIndicator(QtWidgets.QLabel):
@@ -255,6 +274,20 @@ class StatusIndicator(QtWidgets.QLabel):
     active_pixmap_path = Path('./source/icons/On.png')
     busy_pixmap_path = Path('./source/icons/Busy.png')
     none_pixmap_path = Path('./source/icons/None.png')
+
+    statusChanged = pyqtSignal([], [str], [int], [bool], [QObject])
+    none_statuses = [-1, 'None', '', None]
+    off_statuses = [0, False, 'Inactive', 'Off', 'Failed']
+    on_statuses = [1, True, 'Active', 'On']
+    busy_statuses = [2, 'Busy', 'Pending']
+    status_values = {
+        -1: [-1, 'None', '', None],
+        0: [0, 'Inactive', 'Off', 'Failed', False],
+        1: [1, 'Active', 'On', True],
+        2: [2, 'Busy', 'Pending']
+    }
+    accepted_statuses = none_statuses+off_statuses+on_statuses+busy_statuses
+    #_ = [accepted_statuses.extend(status_values[key] for key in status_values)]
 
     def __init__(self, *args, initial_status=None, **kwargs):
         """
@@ -265,20 +298,129 @@ class StatusIndicator(QtWidgets.QLabel):
         """
         super(StatusIndicator, self).__init__(*args, **kwargs)
 
-        self.status = Status(initial_status)
+        if initial_status not in self.accepted_statuses:
+            raise ValueError()
+        self._status = initial_status
+
         self.setScaledContents(True)
-        self.status.statusChanged.connect(self.reDraw)
+        self.statusChanged.connect(self.reDraw)
+
+    def set_status(self, status):
+        if status not in self.accepted_statuses:
+            raise StatusError('Status {status!r} not found in accepted statuses {self.accepted_statuses!r}'.format(status=status, self=self))
+        self._status = status
+
+        try:
+            if self.is_inactive():
+                pixmap_path = self.inactive_pixmap_path
+            elif self.is_active():
+                pixmap_path = self.active_pixmap_path
+            elif self.is_busy():
+                pixmap_path = self.busy_pixmap_path
+            elif self.is_none():
+                pixmap_path = self.none_pixmap_path
+            else:
+                raise StatusError('Cannot redraw status indicator. Status {status} is not recognized!'.format(status=self.Status()))
+        except StatusError:
+            raise
+        else:
+            pixmap = QPixmap(str(pixmap_path))
+            if pixmap.isNull():
+                raise ValueError(
+                    'Image for status {self.status} is Null (path: "{path}"!'.format(self=self, path=pixmap_path))
+            self.setPixmap(pixmap)
+
+    def get_status(self):
+        for key in self.status_values:
+            if self._status in self.status_values[key]:
+                return key
+
+        raise StatusError(
+            'Status "{self._status!r}" is not fould in the accepted status values {self.status_values!r}!'.format(
+                self=self))
+
+    def is_none(self):
+        return self.Status() == -1
+
+    def is_inactive(self):
+        return self.Status() == 0
+
+    def is_busy(self):
+        return self.Status() == 2
+
+    def is_active(self):
+        return self.Status() == 1
+
+    @pyqtSlot(name='Status', result=int)
+    def Status(self):
+        return self.get_status()
+
+    @pyqtSlot(int, name = 'setStatus')
+    @pyqtSlot(str, name='setStatus')
+    @pyqtSlot(bool, name='setStatus')
+    def setStatus(self, status):
+        self.set_status(status)
+        self.statusChanged.emit()
+        self.statusChanged[int].emit(self.get_status())
+
+    @pyqtSlot(name='isNone', result=bool)
+    def isNone(self):
+        return self.is_none()
+
+    @pyqtSlot(name='isInactive', result=bool)
+    def isInactive(self):
+        return self.is_inactive()
+
+    @pyqtSlot(name='isBusy', result=bool)
+    def isBusy(self):
+        return self.is_busy()
+
+    @pyqtSlot(name='isActive', result=bool)
+    def isActive(self):
+        return self.is_active()
+
+    @pyqtSlot(name='setNone')
+    def setNone(self):
+        self.set_status(-1)
+        self.statusChanged.emit()
+        self.statusChanged[int].emit(-1)
+        self.statusChanged[str].emit('None')
+
+    @pyqtSlot(name='setInactive')
+    def setInactive(self):
+        self.set_status(0)
+        self.statusChanged.emit()
+        self.statusChanged[int].emit(0)
+        self.statusChanged[bool].emit(False)
+        self.statusChanged[str].emit('Off')
+
+    @pyqtSlot(name='setActive')
+    def setActive(self):
+        self.set_status(1)
+        self.statusChanged.emit()
+        self.statusChanged[int].emit(1)
+        self.statusChanged[bool].emit(True)
+        self.statusChanged[str].emit('On')
+
+    @pyqtSlot(name='setBusy')
+    def setBusy(self):
+        self.set_status(2)
+        self.statusChanged.emit()
+        self.statusChanged[int].emit(2)
+        self.statusChanged[str].emit('Busy')
 
     @pyqtSlot()
     def reDraw(self):
-        if self.status.is_inactive():
+        if self.isInactive():
             pixmap_path = self.inactive_pixmap_path
-        elif self.status.is_active():
+        elif self.isActive():
             pixmap_path = self.active_pixmap_path
-        elif self.status.is_busy():
+        elif self.isBusy():
             pixmap_path = self.busy_pixmap_path
-        else:
+        elif self.isNone():
             pixmap_path = self.none_pixmap_path
+        else:
+            raise StatusError('Cannot redraw status indicator. Status {status} is not recognized!'.format(self.Status()))
         pixmap = QPixmap(str(pixmap_path))
         if pixmap.isNull():
             raise ValueError(

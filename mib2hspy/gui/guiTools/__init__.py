@@ -1,1 +1,1 @@
-from .tools import Worker, DataFrameModel, StatusIndicator
+from .tools import Worker, DataFrameModel, StatusIndicator, QTextEditLogger
