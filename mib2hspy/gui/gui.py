@@ -62,25 +62,33 @@ class MainWindow(QtWidgets.QMainWindow):
             options=options)
         return fileName
 
-    @pyqtSlot(int, int, name='setStepSize')
-    def setStepSize(self, nx, ny):
-        self.stepsXSpinBox.setValue(nx)
-        self.stepsYSpinBox.setValue(ny)
+class NotesWindow(QtWidgets.QMainWindow):
+    textChanged = pyqtSignal()
+    def __init__(self, *args, **kwargs):
+        super(NotesWindow, self).__init__(*args, **kwargs)
 
-    @pyqtSlot(tuple, name='setStepSize')
-    def setStepSize(self, steps):
-        if steps[0] is None:
-            steps = (0, steps[1])
-        if steps[1] is None:
-            steps = (steps[0], 0)
-        self.stepsXSpinBox.setValue(steps[0])
-        self.stepsYSpinBox.setValue(steps[1])
+        # Load ui file
+        uic.loadUi('./source/QTCmib2hspy/noteswindow.ui', self)
+        self.setWindowTitle('Notes')
+        self.storeButton.clicked.connect(self.setNotes)
+        self.textEdit.textChanged.connect(self.refresh)
+        self.textChanged.connect(self.refresh)
+        self._text = ''
 
-    # @pyqtSlot()
-    # def returnPressedInputFileField(self):
-    #     self.message.emit('Return pressed in input file path')
-    #     self.model.setFilename(self.inputFilePathField.text())
-    #     self.update.emit()
+    @pyqtSlot()
+    def refresh(self):
+        if self._text != self.textEdit.toPlainText():
+            self.statusIndicator.setInactive()
+        else:
+            self.statusIndicator.setActive()
+
+    @pyqtSlot()
+    def setNotes(self):
+        self._text = self.textEdit.toPlainText()
+        self.textChanged.emit()
+
+    def get_text(self):
+        return self._text
 
 
 class mib2hspyModel(QObject):
@@ -89,36 +97,21 @@ class mib2hspyModel(QObject):
     dataCleared = pyqtSignal(name='dataCleared')
     headerLoaded = pyqtSignal([], [int], name='headerLoaded')
     headerCleared = pyqtSignal(name='headerCleared')
-    scanSizeChanged = pyqtSignal([], [int, int], [tuple], name='scanSizeChanged')
-    dwelltimeChanged = pyqtSignal([], [float], name='dwelltimeChanged')
-    scanRotationChanged = pyqtSignal([], [float], name='scanRotationChanged')
-    specimenChanged = pyqtSignal([], [str], name='specimenChanged')
-    operatorChanged = pyqtSignal([], [str], name='operatorChanged')
-    positionXChanged = pyqtSignal([], [float], name='positionXChanged')
-    positionYChanged = pyqtSignal([], [float], name='positionYChanged')
-    positionZChanged = pyqtSignal([], [float], name='positionZChanged')
-    tiltXChanged = pyqtSignal([], [float], name='tiltXChanged')
-    tiltYChanged = pyqtSignal([], [float], name='tiltYChanged')
 
     def __init__(self):
         super(mib2hspyModel, self).__init__()
         self.filename = None
         self.data = None
-        self.data_array = None
         self.hdr = MedipixHDRcontent('.')
-        self.scan_size = (None, None)
-        self.dwelltime = None
-        self.scan_rotation = None
-        self.specimen = None
-        self.operator = None
-
-        self.position_x = None
-        self.position_y = None
-        self.position_z = None
-        self.tilt_x = None
-        self.tilt_y = None
 
     def set_filename(self, filename):
+        """
+        Sets the filename of the model
+        :param filename: The path to the data file to use
+        :type filename: str
+        :type filename: Path
+        :return:
+        """
         if not isinstance(filename, (str, Path)):
             raise TypeError()
         filename = Path(filename)
@@ -131,6 +124,14 @@ class mib2hspyModel(QObject):
         self.filenameChanged[str].emit(str(self.filename))
 
     def load_file(self, filename=None):
+        """
+        Loads a datafile.
+        :param filename: The path to the data file to be used. Optional. Default is `None`, and then the preset filename will be used.
+        :type filename: str
+        :type filename: Path
+        :type filename: NoneType
+        :return:
+        """
         if filename is not None:
             self.set_filename(filename)
 
@@ -146,6 +147,10 @@ class mib2hspyModel(QObject):
             logging.getLogger().error(e)
 
     def load_hdr(self):
+        """
+        Load a .hdr file. Can only be used if the filename of the .mib file is already set.
+        :return:
+        """
         if self.filename is None:
             raise ValueError()
         else:
@@ -161,247 +166,67 @@ class mib2hspyModel(QObject):
             self.headerLoaded.emit()
 
     def clear_data(self):
+        """
+        Clears the data and header contents.
+        :return:
+        """
         self.data = None
-        self.data_array = None
         self.hdr.clear()
-
-        self.dwelltime = None
-        self.scan_rotation = None
-
-        self.specimen = None
-        self.operator = None
-
-        self.position_x = None
 
         self.dataCleared.emit()
         self.headerCleared.emit()
 
         logging.getLogger().info(
-            'Cleared data:\ndata: {self.data!r}\ndata array: {self.data_array!r}\nHeader: {self.hdr!r}'.format(
-                self=self))
-
-    def set_steps_x(self, steps):
-        """
-        Sets the scan size in x-direction
-
-        :param steps: The number of steps in x-direction
-        :type steps: int
-        :return:
-        """
-        self.scan_size = (steps, self.scan_size[1])
-        self.scanSizeChanged.emit()
-        self.scanSizeChanged[tuple].emit(self.scan_size)
-        logging.getLogger().info('Set number of steps in x axis to {steps!r}'.format(steps=steps))
-
-    def set_steps_y(self, steps):
-        """
-        Sets the scan size in y-direction
-
-        :param steps: The number of steps in y-direction
-        :type steps: int
-        :return:
-        """
-        self.scan_size = (self.scan_size[0], steps)
-        self.scanSizeChanged.emit()
-        self.scanSizeChanged[tuple].emit(self.scan_size)
-        logging.getLogger().info('Set number of steps in y axis to {steps!r}'.format(steps=steps))
-
-    def set_dwelltime(self, dwelltime):
-        """
-        Sets the dwelltime of the scan
-
-        :param dwelltime: The dwelltime of the scan in ms
-        :type dwelltime: float
-        :return:
-        """
-        if not isinstance(dwelltime, float):
-            raise TypeError()
-        self.dwelltime = dwelltime
-        self.dwelltimeChanged.emit()
-        if isinstance(self.dwelltime, float):
-            self.dwelltimeChanged[float].emit(self.dwelltime)
-        logging.getLogger().info('Set dwelltime to {self.dwelltime!r} ms'.format(self=self))
-
-    def set_scan_rotation(self, rotation):
-        """
-        Sets the scan rotation
-
-        :param rotation: Scan rotation in degrees
-        :type rotation: float
-        :return:
-        """
-        if not isinstance(rotation, float):
-            raise TypeError()
-        self.scan_rotation = rotation
-        self.scanRotationChanged.emit()
-        if isinstance(self.scan_rotation, float):
-            self.scanRotationChanged[float].emit(self.scan_rotation)
-        logging.getLogger().info('Set scan rotation to {self.scan_rotation!r} deg'.format(self=self))
-
-    def set_specimen(self, specimen):
-        """
-        Sets the specimen tag/name
-
-        :param specimen: The name of the specimen
-        :type specimen: str
-        :return:
-        """
-        if not isinstance(specimen, str):
-            raise TypeError()
-        self.specimen = specimen
-        self.specimenChanged.emit()
-        if isinstance(self.specimen, str):
-            self.specimenChanged[str].emit(self.specimen)
-        logging.getLogger().info('Set specimen to {self.specimen!r}'.format(self=self))
-
-    def set_operator(self, operator):
-        """
-        Sets the specimen tag/name
-
-        :param operator: The name of the specimen
-        :type operator: str
-        :return:
-        """
-        if not isinstance(operator, str):
-            raise TypeError()
-        self.operator = operator
-        self.operatorChanged.emit()
-        if isinstance(self.operator, str):
-            self.operatorChanged[str].emit(self.operator)
-        logging.getLogger().info('Set operator to {self.operator!r}'.format(self=self))
-
-    def set_position_x(self, x):
-        """
-        Sets the specimen x position
-
-        :param x: Specimen x position in microns
-        :type x: float
-        :return:
-        """
-        if not isinstance(x, float):
-            raise TypeError()
-        self.position_x = x
-        self.positionXChanged.emit()
-        if isinstance(self.position_x, float):
-            self.positionXChanged[float].emit(self.position_x)
-        logging.getLogger().info('Set specimen x position to {self.position_x!r} deg'.format(self=self))
-        
-    def set_position_y(self, y):
-        """
-        Sets the specimen y position
-
-        :param y: Specimen y position in microns
-        :type y: float
-        :return:
-        """
-        if not isinstance(y, float):
-            raise TypeError()
-        self.position_y = y
-        self.positionYChanged.emit()
-        if isinstance(self.position_y, float):
-            self.positionYChanged[float].emit(self.position_y)
-        logging.getLogger().info('Set specimen y position to {self.position_y!r} deg'.format(self=self))
-    
-    def set_position_z(self, z):
-        """
-        Sets the specimen z position
-
-        :param z: Specimen z position in microns
-        :type z: float
-        :return:
-        """
-        if not isinstance(z, float):
-            raise TypeError()
-        self.position_z = z
-        self.positionZChanged.emit()
-        if isinstance(self.position_z, float):
-            self.positionZChanged[float].emit(self.position_z)
-        logging.getLogger().info('Set specimen z position to {self.position_z!r} deg'.format(self=self))
-        
-    def set_tilt_x(self, x):
-        """
-        Sets the specimen x tilt
-
-        :param x: Specimen x tilt in degrees
-        :type x: float
-        :return:
-        """
-        if not isinstance(x, float):
-            raise TypeError()
-        self.tilt_x = x
-        self.tiltXChanged.emit()
-        if isinstance(self.tilt_x, float):
-            self.tiltXChanged[float].emit(self.tilt_x)
-        logging.getLogger().info('Set specimen x tilt to {self.tilt_x!r} deg'.format(self=self))
-        
-    def set_tilt_y(self, y):
-        """
-        Sets the specimen y tilt or specimen rotation.
-
-        :param y: Specimen y tilt in degrees
-        :type y: float
-        :return:
-        """
-        if not isinstance(y, float):
-            raise TypeError()
-        self.tilt_y = y
-        self.tiltYChanged.emit()
-        if isinstance(self.tilt_y, float):
-            self.tiltYChanged[float].emit(self.tilt_y)
-        logging.getLogger().info('Set specimen y tilt to {self.tilt_y!r} deg'.format(self=self))
+            'Cleared data:\ndata: {self.data!r}\nHeader: {self.hdr!r}'.format(self=self))
 
 
 class mib2hspyController(object):
-    def __init__(self, view, model=None):
+    def __init__(self, view, model=None, notes_window=None):
         """
         Create controller for the mib2hspy gui
         :param view: The main gui window.
         :type view: MainWindow
         :param model: The model to control.
+        :type model: mib2hspyModel
+        :param notes_window: The notes subwindow
+        :type notes_window: NotesWindow
         """
         self._view = view
+        self._notes_view = notes_window
         self._model = model
 
         self.setupLogging()
         self.setupInputFileSignals()
-        self.setupScanDetails()
-        self.setupSessionDetails()
+
+        self._model.headerLoaded.connect(lambda: self.set_scan_size_from_header())
+        self._view.writeFileButton.clicked.connect(self.write_data)
+        self._view.actionNotes.triggered.connect(lambda: self._notes_view.show())
 
     def setupLogging(self):
+        """
+        Sets up logging for the GUI
+        :return:
+        """
         handler = QTextEditLogger(widget=self._view.logView)
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logging.getLogger().addHandler(handler)
 
     def setupInputFileSignals(self):
+        """
+        Setup the input file signals of the GUI
+        :return:
+        """
         self._view.browseInputFileButton.clicked.connect(
             lambda: self._view.inputFilePathField.setText(self._view.browseInputFile()))
         self._view.loadInputFileButton.clicked.connect(self.load_data)
         self._model.dataLoaded.connect(self.update_view)
         self._model.dataLoaded.connect(self._model.load_hdr)
         self._model.headerLoaded.connect(lambda: self._view.headerStatusIndicator.setActive())
+        self._model.headerLoaded.connect(lambda: self.update_view())
         self._model.dataCleared.connect(lambda: self._view.fileStatusIndicator.setInactive())
         self._model.headerCleared.connect(lambda: self._view.headerStatusIndicator.setInactive())
-
-    def setupScanDetails(self):
-        self._model.headerLoaded.connect(lambda: self.set_scan_size())
-        self._view.stepsXSpinBox.valueChanged.connect(lambda nx: self._model.set_steps_x(nx))
-        self._view.stepsYSpinBox.valueChanged.connect(lambda ny: self._model.set_steps_y(ny))
-        self._view.dwelltimeSpinBox.valueChanged.connect(lambda dt: self._model.set_dwelltime(dt))
-        self._view.rotationSpinBox.valueChanged.connect(lambda rot: self._model.set_scan_rotation(rot))
-
-    def setupSessionDetails(self):
-        # self._view.specimenLineEdit.textChanged.connect(lambda text: self._model.set_specimen(text))
-        self._view.specimenLineEdit.returnPressed.connect(
-            lambda: self._model.set_specimen(self._view.specimenLineEdit.text()))
-        self._view.operatorLineEdit.returnPressed.connect(
-            lambda: self._model.set_operator(self._view.operatorLineEdit.text()))
-        self._view.xPosSpinBox.valueChanged.connect(lambda x: self._model.set_position_x(x))
-        self._view.yPosSpinBox.valueChanged.connect(lambda y: self._model.set_position_y(y))
-        self._view.zPosSpinBox.valueChanged.connect(lambda z: self._model.set_position_z(z))
-        self._view.xTiltSpinBox.valueChanged.connect(lambda x: self._model.set_tilt_x(x))
-        self._view.yTiltSpinBox.valueChanged.connect(lambda y: self._model.set_tilt_y(y))
-
-
+        self._model.dataCleared.connect(lambda: self.update_view())
+        self._model.headerCleared.connect(lambda: self.update_view())
 
 
     def update_view(self):
@@ -410,42 +235,20 @@ class mib2hspyController(object):
         else:
             self._view.fileStatusIndicator.setNone()
 
-    def set_scan_size(self, nx=None, ny=None):
+    def set_scan_size_from_header(self):
         """
-        Sets the scan size of the data.
-
-        If both `nx` and `ny` is `None`, attempts to set scan sized based on the header file content
-        If only one of `nx` and `ny` is given, attempts to set the other scan size to match the total shape of the signal navigation size.
-        :param nx: scan size in x-direction. Optional, default is None.
-        :param ny: scan size in y-direction. Optional, default is None
-        :type nx: int
-        :type ny: int
-        :return:
+        Sets the scan size of the data based on header file.
         """
+        logging.getLogger().info('Setting scan sizes based on header file. Frames per trigger is {self._model.hdr.frames_per_trigger}'.format(self=self))
         if self._model.data is None:
-            logging.info('Setting scan size before loading data is not advised!')
-            N = None
-        else:
-            N = len(self._model.data)
+            raise TypeError
 
-        if N is not None:
-            if nx is not None and ny is not None:
-                if (nx * ny) == N:
-                    logging.info('Scan size {size} does not match data size {N}'.format(size=nx * ny, N=N))
-            elif nx is None and ny is None:
-                nx = int(self._model.hdr.frames_per_trigger.value)
-                ny = int(N / nx)
-            elif nx is None and ny is not None:
-                nx = int(N / ny)
-            elif nx is not None and ny is None:
-                ny = int(N / nx)
-        else:
-            if nx is None:
-                nx = self._model.scan_size[0]
-            if ny is None:
-                ny = self._model.scan_size[1]
-        steps = (nx, ny)
-        self._view.setStepSize(steps)
+        N = len(self._model.data)
+        nx = int(self._model.hdr.frames_per_trigger)
+        ny = int(N/nx)
+        self._view.stepsXSpinBox.setValue(nx)
+        self._view.stepsYSpinBox.setValue(ny)
+        logging.getLogger().info('Set scan sizes based on header file successfully')
 
     def worker_progress(self, progress):
         logging.getLogger().info('Progress: {progress}'.format(progress=progress))
@@ -480,6 +283,154 @@ class mib2hspyController(object):
             lambda: logging.getLogger().info('Data: {self._model.data!r}'.format(self=self)))
         self._view.threadpool.start(worker)
 
+    def write_data(self):
+        """Start a worker to write a signal"""
+        worker = self.worker_wrapper(self.convert_data)
+        self._view.threadpool.start(worker)
+
+
+    def reshape_data(self, data_array, nx, ny, dx, dy):
+        """
+        Return a reshaped data array
+
+        :param data_array: The data to be reshaped
+        :param nx: size in x-direction (scan)
+        :param ny: size in y-direction (scan)
+        :param dx: detector size in x-direction
+        :param dy: detector size in y-direction
+        :type data_array: array-like
+        :type nx: int
+        :type ny: int
+        :type dx: int
+        :type dy: int
+        :return: The reshaped data array
+        :rtype: array-like
+        """
+        logging.getLogger().info('Reshaping data to shape ({nx}, {ny} | {dx}, {dy})'.format(nx=nx, ny=ny, dx=dx, dy=dy))
+        self._view.reshapedIndicator.setBusy()
+        if nx > 0 and ny > 0:
+            logging.getLogger().info('Treating data as image stack when reshaping')
+            shape = (nx, ny, dx, dy)
+        else:
+            logging.getLogger().info('Treating data as single image when reshaping')
+            shape = (dx, dy)
+        logging.getLogger().info('Using data shape {}'.format(shape))
+        data_array = data_array.reshape(shape)
+        self._view.reshapedIndicator.setActive()
+        logging.getLogger().info('Reshaped data')
+        return data_array
+
+    def downsample_data(self, data_array, bitdepth):
+        """
+        Change the data type of a data array
+
+        :param data_array: The data array to downsample
+        :type data_array: array-like
+        :param bitdepth: the datatype to change the data into
+        :type bitdepth: str
+        :return: data_array
+        :rtype: array-like
+        """
+        self._view.downsampledIndicator.setBusy()
+        if bitdepth == 'None':
+            self._view.downsampledIndicator.setInactive()
+            logging.getLogger().info('Did not downsample data')
+        else:
+            data_array = data_array.astype(bitdepth)
+            self._view.downsampledIndicator.setActive()
+            logging.getLogger().info('Downsapled data to {}'.format(bitdepth))
+        return data_array
+
+    def rechunk_data(self, data_array, chunksize):
+        """
+        Change the chunking of a dask array
+        :param data_array: The data array to rechunk
+        :param chunksize: The chunksize to use
+        :type data_array: array-like
+        :type chunksize: int
+        :return: The rechunked data array
+        :rtype: array-like
+        """
+        self._view.rechunkedIndicator.setBusy()
+        if chunksize != 'None':
+            chunks = [int(chunksize)] * len(data_array.shape)
+            logging.getLogger().info('Rechunking data to {} chunks'.format(chunks))
+            data_array = data_array.rechunk(chunks)
+            self._view.rechunkedIndicator.setActive()
+            logging.getLogger().info('Rechunked data')
+        else:
+            logging.getLogger().info('Did not rechunk data')
+            self._view.rechunkedIndicator.setInactive()
+        return data_array
+
+    def generate_metadata(self):
+        """
+        Create a metadata dictionary based on the GUI input
+        :return: metadata
+        :rtype: dict
+        """
+        logging.getLogger().info('Generating metadata')
+        metadata = {
+            'General': {
+                'Specimen': self._view.specimenLineEdit.text(),
+                'Operator': self._view.operatorLineEdit.text()
+                'Notes': self._notes_view.get_text()
+            },
+            'Acquisition_instrument': {
+                'TEM': {
+                    'Stage': {
+                        'X': self._view.xPosSpinBox.value(),
+                        'Y': self._view.yPosSpinBox.value(),
+                        'Z': self._view.zPosSpinBox.value(),
+                        'Xtilt': self._view.xTiltSpinBox.value(),
+                        'YTilt': self._view.yTiltSpinBox.value()
+                    },
+                    'Scan': {
+                        'Dwelltime': self._view.dwelltimeSpinBox.value(),
+                        'Rotation': self._view.rotationSpinBox.value()
+                    }
+                }
+            }
+        }
+        logging.getLogger().info('Generated metadata:\n{metadata}'.format(metadata=metadata))
+        return  metadata
+
+    def convert_data(self):
+        """
+        Convert the data, and save it as a signal.
+        :return:
+        """
+        if self._model.data is None:
+            raise TypeError()
+
+        nx = self._view.stepsXSpinBox.value()
+        ny = self._view.stepsYSpinBox.value()
+        dx = self._view.detectorXSpinBox.value()
+        dy = self._view.detectorYSpinBox.value()
+        if nx == ny == 0:
+            logging.getLogger().info('Treating {self._model.data} as single image'.format(self=self))
+            data_array = self._model.data.inav[0].data
+        else:
+            logging.getLogger().info('Treating {self._model.data} as image stack'.format(self=self))
+            data_array = self._model.data.data
+
+        data_array = self.reshape_data(data_array, nx, ny, dx, dy)
+        data_array = self.downsample_data(data_array, self._view.bitDepthSelector.currentText())
+        data_array = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText())
+
+        logging.getLogger().info('Creating signal from converted data')
+        signal = pxm.LazyElectronDiffraction2D(data_array)
+        logging.getLogger().info('Created signal {}'.format(signal))
+
+        signal.original_metadata.add_dictionary(self.generate_metadata())
+
+        logging.getLogger().info('Writing data')
+        self._view.writtenIndicator.setBusy()
+        signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()),
+                    overwrite=self._view.overwriteCheckBox.isChecked())
+        self._view.writtenIndicator.setActive()
+        logging.getLogger().info('Wrote data')
+
 
 def main(logfile=None):
     """
@@ -511,10 +462,13 @@ def main(logfile=None):
 
     myqui = QtWidgets.QApplication(sys.argv)
 
-    view = MainWindow()
-    view.show()
+    main_window = MainWindow()
+    main_window.show()
+
+    notes_window = NotesWindow()
+
     model = mib2hspyModel()
-    controller = mib2hspyController(view, model)
+    controller = mib2hspyController(main_window, model, notes_window=notes_window)
 
     sys.exit(myqui.exec_())
 

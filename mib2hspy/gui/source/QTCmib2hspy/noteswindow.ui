@@ -43,7 +43,7 @@
        </widget>
       </item>
       <item>
-       <widget class="statusIndicator" name="statusIndicator">
+       <widget class="StatusIndicator" name="statusIndicator">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
           <horstretch>0</horstretch>
@@ -60,7 +60,10 @@
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap>icons/None.png</pixmap>
+         <pixmap>../icons/None.png</pixmap>
+        </property>
+        <property name="scaledContents">
+         <bool>true</bool>
         </property>
        </widget>
       </item>
@@ -100,7 +103,7 @@
      <x>0</x>
      <y>0</y>
      <width>587</width>
-     <height>22</height>
+     <height>26</height>
     </rect>
    </property>
   </widget>
@@ -108,9 +111,9 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>statusIndicator</class>
+   <class>StatusIndicator</class>
    <extends>QLabel</extends>
-   <header>mib2hspy.gui.customguielements.h</header>
+   <header>mib2hspy.gui.guiTools.h</header>
   </customwidget>
  </customwidgets>
  <resources/>
