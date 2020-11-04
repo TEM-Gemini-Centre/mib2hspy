@@ -46,6 +46,9 @@ class MedipixHDRcontent(object):
         self.readout_system = MedipixHDRfield('Readout System', '')
         self.software_version = MedipixHDRfield('Software Version', '')
 
+    def __repr__(self):
+        return '{self.__class__.__name__}({self.filename!r})'.format(self=self)
+
     def __str__(self):
         content = '\n\t'.join(['{field.name}: {field.value}'.format(field=field) for field in self])
         return 'Content of Medipix HDR file "{self.filename}":\n\t{content}'.format(self=self, content=content)
@@ -140,3 +143,4 @@ class MedipixHDRcontent(object):
         """Clears the header object of content"""
         for field in self:
             field.value = ''
+        self.filename = Path('.')
