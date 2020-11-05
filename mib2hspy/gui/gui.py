@@ -5,11 +5,13 @@ from pathlib import Path
 from PyQt5 import uic, QtWidgets
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QObject
 import pyxem as pxm
+import pandas as pd
+from numpy import nan
 
 import time
 # from .guiTools import tools
-from mib2hspy.gui.guiTools import Worker, QTextEditLogger
-from mib2hspy.Tools import MedipixHDRcontent, MedipixHDRfield
+from mib2hspy.gui.guiTools import Worker, QTextEditLogger, DataFrameModel
+from mib2hspy.Tools import MedipixHDRcontent, MedipixHDRfield, Microscope
 
 
 class LogStream(object):
@@ -62,8 +64,21 @@ class MainWindow(QtWidgets.QMainWindow):
             options=options)
         return fileName
 
+    @pyqtSlot(name='browseCalibrationFile', result=str)
+    def browseCalibrationFile(self):
+        options = QtWidgets.QFileDialog.Options()
+        fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
+            None,
+            "Select file",
+            "",
+            "csv Files (*.csv);;All Files (*)",
+            options=options)
+        return fileName
+
+
 class NotesWindow(QtWidgets.QMainWindow):
     textChanged = pyqtSignal()
+
     def __init__(self, *args, **kwargs):
         super(NotesWindow, self).__init__(*args, **kwargs)
 
@@ -91,18 +106,323 @@ class NotesWindow(QtWidgets.QMainWindow):
         return self._text
 
 
+class ParameterController(QObject):
+    accelerationVoltageChanged = pyqtSignal([], [int], [float], [str])
+    modeChanged = pyqtSignal([], [int], [float], [str])
+    magModeChanged = pyqtSignal([], [int], [float], [str])
+    magnificationChanged = pyqtSignal([], [int], [float], [str])
+    cameralengthChanged = pyqtSignal([], [int], [float], [str])
+    alphaChanged = pyqtSignal([], [int], [float], [str])
+    stepSizeXChanged = pyqtSignal([], [int], [float], [str])
+    stepSizeYChanged = pyqtSignal([], [int], [float], [str])
+    condenserApertureChanged = pyqtSignal([], [int], [float], [str])
+    convergenceAngleChanged = pyqtSignal([], [int], [float], [str])
+    rockingAngleChanged = pyqtSignal([], [int], [float], [str])
+    rockingFrequencyChanged = pyqtSignal([], [int], [float], [str])
+    spotChanged = pyqtSignal([], [int], [float], [str])
+    spotSizeChanged = pyqtSignal([], [int], [float], [str])
+
+    def __init__(self, view, model):
+        """
+        Create a controller for parameter view and model
+        :param view: The window to control the parameters
+        :param model: The model to store the parameters in
+        :type view: ParametersWindow
+        :type model: Microscope
+        """
+        super(ParameterController, self).__init__()
+        self._view = view
+        self._model = model
+
+        self._table_model = DataFrameModel(parent=self._view)
+        self._view.tableView.setModel(self._table_model)
+
+        self.setupMagnification()
+        self.setupCameralength()
+        self.setupAccelerationVoltage()
+        self.setupMode()
+        self.setupAlpha()
+        self.setupSpot()
+        self.setupSpotSize()
+        self.setupConvergenceAngle()
+        self.setupCondenserAperture()
+        self.setupPrecessionAngle()
+        self.setupPrecessionFrequency()
+        self.setupAcquisitionDate()
+        self.setupScanStep()
+        self.update()
+
+    def setupMagnification(self):
+        self._view.magnificationSpinBox.valueChanged.connect(self._model.set_nominal_magnification)
+        self._view.magnificationSpinBox.valueChanged.connect(lambda v: self.update())
+        self._view.magnificationSelector.currentTextChanged.connect(self._model.set_mag_mode)
+        self._view.magnificationSelector.currentTextChanged.connect(lambda v: self.update())
+        self._view.magnificationGroupBox.clicked.connect(self.toggle_magnification)
+        self._view.magnificationSpinBox.valueChanged.connect(self.magnificationChanged)
+        self._view.magnificationSelector.currentIndexChanged.connect(self.magModeChanged)
+
+    def toggle_magnification(self):
+        if self._view.magnificationGroupBox.isChecked():
+            self._model.set_nominal_magnification(self._view.magnificationSpinBox.value())
+            self._model.set_mag_mode(self._view.magnificationSelector.currentText())
+        else:
+            self._model.set_nominal_magnification(nan)
+            self._model.set_mag_mode('')
+        self.magnificationChanged.emit()
+        self.update()
+
+    def setupCameralength(self):
+        self._view.cameraLengthSpinBox.valueChanged.connect(self._model.set_nominal_cameralength)
+        self._view.cameraLengthSpinBox.valueChanged.connect(lambda v: self.update())
+        self._view.cameraLengthGroupBox.clicked.connect(self.toggle_cameralength)
+        self._view.cameraLengthSpinBox.valueChanged.connect(self.cameralengthChanged)
+
+    def toggle_cameralength(self):
+        if self._view.cameraLengthGroupBox.isChecked():
+            self._model.set_nominal_cameralength(self._view.cameraLengthSpinBox.value())
+        else:
+            self._model.set_nominal_cameralength(nan)
+        self.cameralengthChanged.emit()
+        self.update()
+
+    def setupAccelerationVoltage(self):
+        self._view.highTensionSpinBox.valueChanged.connect(self._model.set_acceleration_voltage)
+        self._view.highTensionSpinBox.valueChanged.connect(self.update)
+        self._view.highTensionGroupBox.clicked.connect(self.toggle_acceleration_voltage)
+        self._view.highTensionSpinBox.valueChanged.connect(self.accelerationVoltageChanged)
+
+    def toggle_acceleration_voltage(self):
+        if self._view.highTensionGroupBox.isChecked():
+            self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value())
+        else:
+            self._model.set_acceleration_voltage(nan)
+        self.accelerationVoltageChanged.emit()
+        self.update()
+
+    def setupMode(self):
+        self._view.modeSelector.currentTextChanged.connect(self._model.set_mode)
+        self._view.modeSelector.currentTextChanged.connect(self.update)
+        self._view.modeSelector.currentIndexChanged.connect(self.modeChanged)
+
+    def setupAlpha(self):
+        self._view.alphaSpinBox.valueChanged.connect(self._model.set_alpha)
+        self._view.alphaSpinBox.valueChanged.connect(self.update)
+        self._view.alphaGroupBox.clicked.connect(self.toggle_alpha)
+        self._view.alphaSpinBox.valueChanged.connect(self.alphaChanged)
+
+    def toggle_alpha(self):
+        if self._view.alphaGroupBox.isChecked():
+            self._model.set_alpha(self._view.alphaSpinBox.value())
+        else:
+            self._model.set_alpha(nan)
+        self.alphaChanged.emit()
+        self.update()
+
+    def setupSpot(self):
+        self._view.spotSpinBox.valueChanged.connect(self._model.set_spot)
+        self._view.spotSpinBox.valueChanged.connect(self.update)
+        self._view.spotGroupBox.clicked.connect(self.toggle_spot)
+        self._view.spotSpinBox.valueChanged.connect(self.spotChanged)
+
+    def toggle_spot(self):
+        if self._view.spotGroupBox.isChecked():
+            self._model.set_spot(self._view.spotSpinBox.value())
+        else:
+            self._model.set_spot(nan)
+        self.spotChanged.emit()
+        self.update()
+
+    def setupSpotSize(self):
+        self._view.spotSizeSpinBox.valueChanged.connect(self._model.set_nominal_spotsize)
+        self._view.spotSizeSpinBox.valueChanged.connect(self.update)
+        self._view.spotSizeGroupBox.clicked.connect(self.toggle_spot_size)
+        self._view.spotSizeSpinBox.valueChanged.connect(self.spotSizeChanged)
+
+    def toggle_spot_size(self):
+        if self._view.spotSizeGroupBox.isChecked():
+            self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
+        else:
+            self._model.set_nominal_spotsize(nan)
+        self.spotSizeChanged.emit()
+        self.update()
+
+    def setupCondenserAperture(self):
+        self._view.condenserApertureSpinBox.valueChanged.connect(self._model.set_nominal_condenser_aperture)
+        self._view.condenserApertureSpinBox.valueChanged.connect(self.update)
+        self._view.condenserApertureGroupBox.clicked.connect(self.toggle_condenser_aperture)
+        self._view.condenserApertureSpinBox.valueChanged.connect(self.condenserApertureChanged)
+
+    def toggle_condenser_aperture(self):
+        if self._view.condenserApertureGroupBox.isChecked():
+            self._model.set_nominal_condenser_aperture(self._view.condenserApertureSpinBox.value())
+        else:
+            self._model.set_nominal_condenser_aperture(nan)
+        self.condenserApertureChanged.emit()
+        self.update()
+
+    def setupConvergenceAngle(self):
+        self._view.convergenceAngleSpinBox.valueChanged.connect(self._model.set_nominal_convergence_angle)
+        self._view.convergenceAngleSpinBox.valueChanged.connect(self.update)
+        self._view.convergenceAngleGroupBox.clicked.connect(self.toggle_convergence_angle)
+        self._view.convergenceAngleSpinBox.valueChanged.connect(self.convergenceAngleChanged)
+
+    def toggle_convergence_angle(self):
+        if self._view.convergenceAngleGroupBox.isChecked():
+            self._model.set_nominal_convergence_angle(self._view.convergenceAngleSpinBox.value())
+        else:
+            self._model.set_nominal_convergence_angle(nan)
+        self.convergenceAngleChanged.emit()
+        self.update()
+
+    def setupPrecessionAngle(self):
+        self._view.precessionAngleSpinBox.valueChanged.connect(self._model.set_nominal_rocking_angle)
+        self._view.precessionAngleSpinBox.valueChanged.connect(self.update)
+        self._view.precessionAngleGroupBox.clicked.connect(self.toggle_precession_angle)
+        self._view.precessionAngleSpinBox.valueChanged.connect(self.rockingAngleChanged)
+
+    def toggle_precession_angle(self):
+        if self._view.precessionAngleGroupBox.isChecked():
+            self._model.set_nominal_rocking_angle(self._view.precessionAngleSpinBox.value())
+        else:
+            self._model.set_nominal_rocking_angle(nan)
+        self.rockingAngleChanged.emit()
+        self.update()
+
+    def setupPrecessionFrequency(self):
+        self._view.precessionFrequencySpinBox.valueChanged.connect(self._model.set_rocking_frequency)
+        self._view.precessionFrequencySpinBox.valueChanged.connect(self.update)
+        self._view.precessionFrequencyGroupBox.clicked.connect(self.toggle_precession_frequency)
+        self._view.precessionFrequencySpinBox.valueChanged.connect(self.rockingFrequencyChanged)
+
+    def toggle_precession_frequency(self):
+        if self._view.precessionFrequencyGroupBox.isChecked():
+            self._model.set_rocking_frequency(self._view.precessionFrequencySpinBox.value())
+        else:
+            self._model.set_rocking_frequency(nan)
+        self.rockingFrequencyChanged.emit()
+        self.update()
+
+    def setupAcquisitionDate(self):
+        self._view.acquisitionDate.dateChanged.connect(lambda date: self._model.set_acquisition_date(date.toPyDate()))
+        self._view.acquisitionDate.dateChanged.connect(self.update)
+        self._view.acquisitionDateGroupBox.clicked.connect(self.toggle_acquisition_date)
+
+    def toggle_acquisition_date(self):
+        if self._view.acquisitionDateGroupBox.isChecked():
+            self._model.set_acquisition_date(self._view.acquisitionDate.date().toPyDate())
+        else:
+            self._model.set_acquisition_date('')
+        self.update()
+
+    def setupScanStep(self):
+        self._view.stepXSpinBox.valueChanged.connect(self._model.set_nominal_scan_step_x)
+        self._view.stepXSpinBox.valueChanged.connect(self.update)
+        self._view.stepYSpinBox.valueChanged.connect(self._model.set_nominal_scan_step_y)
+        self._view.stepYSpinBox.valueChanged.connect(self.update)
+        self._view.stepGroupBox.clicked.connect(self.toggle_step_size)
+        self._view.stepXSpinBox.valueChanged.connect(self.stepSizeXChanged)
+        self._view.stepYSpinBox.valueChanged.connect(self.stepSizeYChanged)
+
+    def toggle_step_size(self):
+        if self._view.stepGroupBox.isChecked():
+            self._model.set_nominal_scan_step_x(self._view.stepXSpinBox.value())
+            self._model.set_nominal_scan_step_y(self._view.stepYSpinBox.value())
+        else:
+            self._model.set_nominal_scan_step_x(nan)
+            self._model.set_nominal_scan_step_y(nan)
+        self.stepSizeXChanged.emit()
+        self.stepSizeYChanged.emit()
+        self.update()
+
+    def update(self, *args, **kwargs):
+        self._table_model.setDataFrame(self._model.as_dataframe2D())
+
+    def show(self):
+        self._view.show()
+
+    def get_view(self):
+        return self._view
+
+    def get_model(self):
+        return self._model
+
+
+class ParametersWindow(QtWidgets.QMainWindow):
+    parametersChanged = pyqtSignal()
+
+    def __init__(self, *args, **kwargs):
+        super(ParametersWindow, self).__init__(*args, **kwargs)
+
+        uic.loadUi('./source/QTCmib2hspy/parameterswindow.ui', self)
+
+    #     self.model = Microscope()
+    #
+    #     self.magnificationSpinBox.valueChanged.connect(self.set_magnification)
+    #     self.magnificationSelector.currentTextChanged.connect(self.set_mag_mode)
+    #     self.magnificationGroupBox.clicked.connect(self.set_magnification_active)
+    #
+    #     self.cameraLengthSpinBox.valueChanged.connect(self.set_cameralength)
+    #     self.cameraLengthGroupBox.clicked.connect(self.set_cameralength_active)
+    #
+    #     self.highTensionSpinBox.valueChanged.connect(self.set_acceleration_voltage)
+    #     self.highTensionGroupBox.clicked.connect(self.set_acceleration_voltage_active)
+    #
+    #     self.modeSelector.currentTextChanged.connect(self.set_mode)
+    #
+    #     self.alphaSpinBox.valueChanged.connect(self.set_alpha)
+    #     self.alphaGroupBox.clicked.connect(self.set_alpha_active)
+    #
+    #     self.spotSpinBox.valueChanged.connect(self.set_spot)
+    #     self.spotGroupBox.clicked.connect(self.set_spot_active)
+    #
+    #     self.condenserApertureSpinBox.valueChanged.connect(self.set_condenser_aperture)
+    #     self.condenserApertureGroupBox.clicked.connect(self.set_condenser_aperture_active)
+    #
+    #     self.convergenceAngleSpinBox.valueChanged.connect(self.set_convergence_angle)
+    #     self.convergenceAngleGroupBox.clicked.connect(self.set_convergence_angle_active)
+    #
+    #     self.spotSizeSpinBox.valueChanged.connect(self.set_spotsize)
+    #     self.spotSizeGroupBox.clicked.connect(self.set_spotsize_active)
+    #
+    #     self.precessionAngleSpinBox.valueChanged.connect(self.set_rocking_angle)
+    #     self.precessionAngleGroupBox.clicked.connect(self.set_rocking_angle_active)
+    #
+    #     self.precessionFrequencySpinBox.valueChanged.connect(self.set_rocking_frequency)
+    #     self.precessionFrequencyGroupBox.clicked.connect(self.set_rocking_frequency_active)
+    #
+    #     self.acquisitionDate.dateChanged.connect(self.set_acquisition_date)
+    #     self.acquisitionDateGroupBox.clicked.connect(self.set_acquisition_date_active)
+    #
+    #     self.stepXSpinBox.valueChanged.connect(self.set_step_x)
+    #     self.stepYSpinBox.valueChanged.connect(self.set_step_y)
+    #     self.stepGroupBox.clicked.connect(self.set_step_active)
+    #
+    #     self.table_model = DataFrameModel(parent=self)
+    #     self.tableView.setModel(self.table_model)
+    #     self.model.updated.connect(self.refresh)
+    #
+    #     self.refresh()
+    #
+    # @pyqtSlot()
+    # def refresh(self):
+    #     self.table_model.setDataFrame(self.model.dataframe2D)
+
+
 class mib2hspyModel(QObject):
     filenameChanged = pyqtSignal([], [str], name='filenameChanged')
     dataLoaded = pyqtSignal([], [int], name='dataLoaded')
     dataCleared = pyqtSignal(name='dataCleared')
     headerLoaded = pyqtSignal([], [int], name='headerLoaded')
     headerCleared = pyqtSignal(name='headerCleared')
+    calibrationLoaded = pyqtSignal([], [int], name='calibrationLoaded')
+    calibrationCleared = pyqtSignal([], [int], name='calibrationCleared')
 
     def __init__(self):
         super(mib2hspyModel, self).__init__()
         self.filename = None
         self.data = None
         self.hdr = MedipixHDRcontent('.')
+        self.calibrationfile = None
 
     def set_filename(self, filename):
         """
@@ -165,6 +485,19 @@ class mib2hspyModel(QObject):
         else:
             self.headerLoaded.emit()
 
+    def load_calibrationfile(self, filename):
+        filename = Path(filename)
+        if not filename.exists():
+            raise FileExistsError
+        if filename.suffix == '.csv':
+            self.calibrationfile = pd.read_csv(filename)  # .fillna(nan)
+            # self.calibrationfile.fillna(nan)
+            self.calibrationLoaded.emit()
+        else:
+            self.calibrationfile = None
+            self.calibrationCleared.emit()
+            raise ValueError('Can only use ".csv" files as calibration files')
+
     def clear_data(self):
         """
         Clears the data and header contents.
@@ -172,16 +505,19 @@ class mib2hspyModel(QObject):
         """
         self.data = None
         self.hdr.clear()
+        self.calibrationfile = None
 
         self.dataCleared.emit()
         self.headerCleared.emit()
+        self.calibrationCleared.emit()
 
         logging.getLogger().info(
-            'Cleared data:\ndata: {self.data!r}\nHeader: {self.hdr!r}'.format(self=self))
+            'Cleared data:\ndata: {self.data!r}\nHeader: {self.hdr!r}\nCalibration: {self.calibrationfile!r}'.format(
+                self=self))
 
 
 class mib2hspyController(object):
-    def __init__(self, view, model=None, notes_window=None):
+    def __init__(self, view, model=None, notes_window=None, parameters_controller=None):
         """
         Create controller for the mib2hspy gui
         :param view: The main gui window.
@@ -190,17 +526,23 @@ class mib2hspyController(object):
         :type model: mib2hspyModel
         :param notes_window: The notes subwindow
         :type notes_window: NotesWindow
+        :param parameters_controller: The controller for parameters
+        :type parameters_window: ParameterController
         """
         self._view = view
-        self._notes_view = notes_window
+        # self._notes_view = notes_window
+        self._parameter_controller = parameters_controller
         self._model = model
 
         self.setupLogging()
         self.setupInputFileSignals()
+        self.setupCalibrationFileSignals()
 
         self._model.headerLoaded.connect(lambda: self.set_scan_size_from_header())
+        self._model.calibrationLoaded.connect(lambda: self.calibrate())
         self._view.writeFileButton.clicked.connect(self.write_data)
-        self._view.actionNotes.triggered.connect(lambda: self._notes_view.show())
+        # self._view.actionNotes.triggered.connect(lambda: self._notes_view.show())
+        self._view.actionAcquisition_parameters.triggered.connect(lambda: self._parameter_controller.show())
 
     def setupLogging(self):
         """
@@ -227,25 +569,172 @@ class mib2hspyController(object):
         self._model.headerCleared.connect(lambda: self._view.headerStatusIndicator.setInactive())
         self._model.dataCleared.connect(lambda: self.update_view())
         self._model.headerCleared.connect(lambda: self.update_view())
+        self._view.clearPushButton.clicked.connect(self.clear)
 
+    def setupCalibrationFileSignals(self):
+        self._view.browseCalibrationButton.clicked.connect(
+            lambda: self._view.calibrationFilePathField.setText(self._view.browseCalibrationFile()))
+        self._view.loadCalibrationButton.clicked.connect(
+            lambda: self._model.load_calibrationfile(self._view.calibrationFilePathField.text()))
+        self._model.calibrationLoaded.connect(self.update_view)
+        self._model.calibrationCleared.connect(self.update_view)
+        self._model.calibrationLoaded.connect(lambda: self._view.calibrationStatusIndicator.setActive())
+        self._model.calibrationCleared.connect(lambda: self._view.calibrationStatusIndicator.setInactive())
+
+        self._parameter_controller.magModeChanged.connect(self.calibrate)
+        self._parameter_controller.modeChanged.connect(self.calibrate)
+        self._parameter_controller.alphaChanged.connect(self.calibrate)
+        self._parameter_controller.accelerationVoltageChanged.connect(self.calibrate)
+        self._parameter_controller.magnificationChanged.connect(self.calibrate)
+        self._parameter_controller.cameralengthChanged.connect(self.calibrate)
+        self._parameter_controller.spotChanged.connect(self.calibrate)
+        self._parameter_controller.spotSizeChanged.connect(self.calibrate)
+        self._parameter_controller.condenserApertureChanged.connect(self.calibrate)
+        self._parameter_controller.convergenceAngleChanged.connect(self.calibrate)
+        self._parameter_controller.rockingAngleChanged.connect(self.calibrate)
+        self._parameter_controller.rockingFrequencyChanged.connect(self.calibrate)
+        self._parameter_controller.stepSizeXChanged.connect(self.calibrate)
+        self._parameter_controller.stepSizeYChanged.connect(self.calibrate)
+
+    def calibrate(self):
+        # print(self.get_cameralength_calibration())
+        # print(self.get_x_scan_calibration())
+        parameters = self._parameter_controller.get_model()
+        parameters.cameralength.set_value(self.get_cameralength_calibration())
+        parameters.scan_step_x.set_value(self.get_x_scan_calibration())
+        parameters.scan_step_y.set_value(self.get_y_scan_calibration())
+        self._parameter_controller.update()
+
+    def get_cameralength_calibration(self):
+        if self._model.calibrationfile is None:
+            return nan
+        parameters = self._parameter_controller.get_model()
+        if parameters.acceleration_voltage.is_defined() and parameters.cameralength.nominal_value_is_defined():
+            valid_calibration = self._model.calibrationfile.query(
+                "`HT` == {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(
+                    parameters=parameters))
+            valid_calibration = valid_calibration['Camera Length (cm)'].values
+            if len(valid_calibration) > 0:
+                return valid_calibration[-1]
+            else:
+                return nan
+        else:
+            return nan
+
+    def get_x_scan_calibration(self):
+        if self._model.calibrationfile is None:
+            return nan
+        parameters = self._parameter_controller.get_model()
+        if parameters.mode.is_defined() and parameters.acceleration_voltage.is_defined() and parameters.scan_step_x.nominal_value_is_defined():
+            if parameters.mode.value == 'STEM':
+                valid_calibration = self._model.calibrationfile.query(
+                    "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                        parameters=parameters))
+            else:
+                if parameters.alpha.is_defined():
+                    valid_calibration = self._model.calibrationfile.query(
+                        "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                            parameters=parameters))
+                else:
+                    return nan
+            valid_calibration = valid_calibration['Step Size X (nm)'].values
+            if len(valid_calibration)>0:
+                return valid_calibration[-1]
+            else:
+                return nan
+        else:
+            return nan
+
+    def get_y_scan_calibration(self):
+        if self._model.calibrationfile is None:
+            return nan
+        parameters = self._parameter_controller.get_model()
+        if parameters.mode.is_defined() and parameters.acceleration_voltage.is_defined() and parameters.scan_step_y.nominal_value_is_defined():
+            if parameters.mode.value == 'STEM':
+                valid_calibration = self._model.calibrationfile.query(
+                    "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size Y (nm)` == {parameters.scan_step_y.nominal_value}".format(
+                        parameters=parameters))
+            else:
+                if parameters.alpha.is_defined():
+                    valid_calibration = self._model.calibrationfile.query(
+                        "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_y.nominal_value}".format(
+                            parameters=parameters))
+                else:
+                    return nan
+            valid_calibration = valid_calibration['Step Size Y (nm)'].values
+            if len(valid_calibration) > 0:
+                return valid_calibration[-1]
+            else:
+                return nan
+        else:
+            return nan
 
     def update_view(self):
+        self.calibrate()
         if self._model.data is not None:
             self._view.fileStatusIndicator.setActive()
         else:
             self._view.fileStatusIndicator.setNone()
 
+    def clear(self):
+        logging.getLogger().info('Clearing data and metadata')
+        self._model.clear_data()
+        self._view.dwelltimeSpinBox.setValue(0.0)
+        self._view.rotationSpinBox.setValue(0.0)
+        self._view.stepsXSpinBox.setValue(0)
+        self._view.stepsYSpinBox.setValue(0)
+        self._view.specimenLineEdit.clear()
+        self._view.operatorLineEdit.clear()
+        self._view.notesTextEdit.clear()
+        self._view.bitDepthSelector.setCurrentIndex(0)
+        self._view.rechunkComboBox.setCurrentIndex(0)
+        self._view.overwriteCheckBox.setChecked(False)
+        self._view.fileFormatSelector.setCurrentIndex(0)
+        self._view.xPosSpinBox.setValue(0.0)
+        self._view.yPosSpinBox.setValue(0.0)
+        self._view.zPosSpinBox.setValue(0.0)
+        self._view.xTiltSpinBox.setValue(0.0)
+        self._view.yTiltSpinBox.setValue(0.0)
+        self._view.detectorXSpinBox.setValue(256)
+        self._view.detectorYSpinBox.setValue(256)
+        self._view.stepSizeXSpinBox.setValue(0.0)
+        self._view.stepSizeYSpinBox.setValue(0.0)
+        self._view.scaleXSpinBox.setValue(0.0)
+        self._view.scaleYSpinBox.setValue(0.0)
+        self._view.scaleXSelector.setCurrentIndex(0)
+        self._view.scaleYSelector.setCurrentIndex(0)
+        self._view.rockingAngleSpinBox.setValue(0.0)
+        self._view.spotSizeSpinBox.setValue(0.0)
+        self._view.cameralengthSpinBox.setValue(0.0)
+        self._view.magnificationSpinBox.setValue(0.0)
+        self._parameter_controller.get_view().magnificationGroupBox.setChecked(False)
+        self._parameter_controller.get_view().cameraLengthGroupBox.setChecked(False)
+        self._parameter_controller.get_view().modeSelector.setCurrentIndex(0)
+        self._parameter_controller.get_view().alphaGroupBox.setChecked(False)
+        self._parameter_controller.get_view().spotGroupBox.setChecked(False)
+        self._parameter_controller.get_view().condenserApertureGroupBox.setChecked(False)
+        self._parameter_controller.get_view().convergenceAngleGroupBox.setChecked(False)
+        self._parameter_controller.get_view().spotSizeGroupBox.setChecked(False)
+        self._parameter_controller.get_view().precessionAngleGroupBox.setChecked(False)
+        self._parameter_controller.get_view().precessionFrequencyGroupBox.setChecked(False)
+        self._parameter_controller.get_view().acquisitionDateGroupBox.setChecked(False)
+        self._parameter_controller.get_view().stepGroupBox.setChecked(False)
+        self._parameter_controller.update()
+        logging.getLogger().info('Cleared data and metadata!')
+
     def set_scan_size_from_header(self):
         """
         Sets the scan size of the data based on header file.
         """
-        logging.getLogger().info('Setting scan sizes based on header file. Frames per trigger is {self._model.hdr.frames_per_trigger}'.format(self=self))
+        logging.getLogger().info(
+            'Setting scan sizes based on header file. Frames per trigger is {self._model.hdr.frames_per_trigger}'.format(
+                self=self))
         if self._model.data is None:
             raise TypeError
 
         N = len(self._model.data)
         nx = int(self._model.hdr.frames_per_trigger)
-        ny = int(N/nx)
+        ny = int(N / nx)
         self._view.stepsXSpinBox.setValue(nx)
         self._view.stepsYSpinBox.setValue(ny)
         logging.getLogger().info('Set scan sizes based on header file successfully')
@@ -287,7 +776,6 @@ class mib2hspyController(object):
         """Start a worker to write a signal"""
         worker = self.worker_wrapper(self.convert_data)
         self._view.threadpool.start(worker)
-
 
     def reshape_data(self, data_array, nx, ny, dx, dy):
         """
@@ -373,8 +861,8 @@ class mib2hspyController(object):
         metadata = {
             'General': {
                 'Specimen': self._view.specimenLineEdit.text(),
-                'Operator': self._view.operatorLineEdit.text()
-                'Notes': self._notes_view.get_text()
+                'Operator': self._view.operatorLineEdit.text(),
+                'Notes': self._view.notesTextEdit.toPlainText()
             },
             'Acquisition_instrument': {
                 'TEM': {
@@ -388,12 +876,13 @@ class mib2hspyController(object):
                     'Scan': {
                         'Dwelltime': self._view.dwelltimeSpinBox.value(),
                         'Rotation': self._view.rotationSpinBox.value()
-                    }
+                    },
+                    'Parameters': self._parameter_controller.get_model().get_parameters_as_dict()
                 }
             }
         }
         logging.getLogger().info('Generated metadata:\n{metadata}'.format(metadata=metadata))
-        return  metadata
+        return metadata
 
     def convert_data(self):
         """
@@ -430,6 +919,7 @@ class mib2hspyController(object):
                     overwrite=self._view.overwriteCheckBox.isChecked())
         self._view.writtenIndicator.setActive()
         logging.getLogger().info('Wrote data')
+        del signal
 
 
 def main(logfile=None):
@@ -467,8 +957,13 @@ def main(logfile=None):
 
     notes_window = NotesWindow()
 
+    parameters_window = ParametersWindow()
+    parameters_model = Microscope()
+    parameters_controller = ParameterController(view=parameters_window, model=parameters_model)
+
     model = mib2hspyModel()
-    controller = mib2hspyController(main_window, model, notes_window=notes_window)
+    controller = mib2hspyController(main_window, model, notes_window=notes_window,
+                                    parameters_controller=parameters_controller)
 
     sys.exit(myqui.exec_())
 

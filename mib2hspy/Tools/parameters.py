@@ -1,9 +1,9 @@
-from math import nan, isnan
-from datetime import datetime
+#from math import nan, isnan
+from datetime import datetime, date
 from tabulate import tabulate
 import pandas as pd
 import numpy as np
-
+from numpy import nan, isnan
 
 class Parameter(object):
     """
@@ -25,7 +25,7 @@ class Parameter(object):
             raise TypeError('Parameter name must be a string!')
         if not isinstance(units, str):
             raise TypeError('Units must be a string!')
-        if not isinstance(value, (int, float, str, datetime)):
+        if not isinstance(value, (int, float, str, datetime, date)):
             raise TypeError('Value must be int, float, str, or datetime!')
         self.name = parameter_name
         self.value = value
@@ -57,10 +57,10 @@ class Parameter(object):
         """
         Set the value of the parameter
         :param newvalue: new parameter value
-        :type newvalue: int, float, str, datetime
+        :type newvalue: int, float, str, datetime, date
         :return:
         """
-        if not isinstance(newvalue, (int, float, str, datetime)):
+        if not isinstance(newvalue, (int, float, str, datetime, date)):
             raise TypeError()
         self.value = newvalue
 
@@ -185,6 +185,22 @@ class CalibratedParameter(Parameter):
     def __format__(self, format_spec):
         return '{self.value:{f}} ({self.nominal_value:{f}}) {self.units}'.format(self=self, f=format_spec)
 
+    def nominal_value_is_defined(self):
+        """
+        Check whether the nominal value of the parameter is well-defined or not (i.e. not `nan`, `None`, `""`, or `"None"`)
+
+        :returns: False if value is None, 'None', '', or nan
+        :rtype: bool
+        """
+        if self.nominal_value is None:
+            return False
+        if isinstance(self.nominal_value, str):
+            if self.nominal_value == '' or self.nominal_value == 'None':
+                return False
+            else:
+                return True
+        return not isnan(self.nominal_value)
+
     def set_nominal_value(self, newvalue):
         if not isinstance(newvalue, (int, float)):
             raise TypeError(
@@ -201,9 +217,9 @@ class CalibratedParameter(Parameter):
 class Microscope(object):
     def __init__(self,
                  acceleration_voltage=Parameter('HT', nan, 'V'),
-                 mode=Parameter('Mode', '', ''),
+                 mode=Parameter('Mode', 'None', ''),
                  alpha=Parameter('Alpha', nan, ''),
-                 mag_mode=Parameter('Magnification Mode', '', ''),
+                 mag_mode=Parameter('Magnification Mode', 'None', ''),
                  magnification=CalibratedParameter('Magnification', nan, '', nan),
                  cameralength=CalibratedParameter('Camera length', nan, 'cm', nan),
                  spot=Parameter('Spot', nan, ''),
@@ -214,7 +230,7 @@ class Microscope(object):
                  rocking_frequency=Parameter('Rocking frequency', nan, 'Hz'),
                  scan_step_x=CalibratedParameter('Step X', nan, 'nm', nan),
                  scan_step_y=CalibratedParameter('Step Y', nan, 'nm', nan),
-                 acquisition_date=Parameter('Acquisition Date', '', '')
+                 acquisition_date=Parameter('Acquisition Date', 'None', '')
                  ):
         """
         Creates a microscope object.
