@@ -23,4 +23,5 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 FORMS += \
     mainwindow.ui \
     noteswindow.ui \
-    parameterswindow.ui
+    parameterswindow.ui \
+    settingsdialog.ui
