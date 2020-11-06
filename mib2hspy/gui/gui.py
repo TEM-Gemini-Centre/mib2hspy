@@ -587,16 +587,31 @@ class mib2hspyController(object):
         self._parameter_controller.accelerationVoltageChanged.connect(self.calibrate)
         self._parameter_controller.magnificationChanged.connect(self.calibrate_magnification)
         self._parameter_controller.cameralengthChanged.connect(self.calibrate_cameralength)
-        #self._parameter_controller.spotChanged.connect(self.calibrate_spotsize)
+        # self._parameter_controller.spotChanged.connect(self.calibrate_spotsize)
         self._parameter_controller.spotSizeChanged.connect(self.calibrate_spotsize)
         self._parameter_controller.condenserApertureChanged.connect(self.calibrate_condenser_aperture)
         self._parameter_controller.convergenceAngleChanged.connect(self.calibrate_convergence_angle)
         self._parameter_controller.rockingAngleChanged.connect(self.calibrate_rocking_angle)
-        #self._parameter_controller.rockingFrequencyChanged.connect(self.calibrate)
+        # self._parameter_controller.rockingFrequencyChanged.connect(self.calibrate)
         self._parameter_controller.stepSizeXChanged.connect(self.calibrate_scan_step_x)
         self._parameter_controller.stepSizeYChanged.connect(self.calibrate_scan_step_y)
 
+        self._view.useCalibrationFileRadioButton.clicked.connect(self.calibrate)
+        self._view.useManualCalibrationRadioButton.clicked.connect(self.calibrate)
+        self._view.stepSizeXSpinBox.valueChanged.connect(self.calibrate_scan_step_x)
+        self._view.stepSizeYSpinBox.valueChanged.connect(self.calibrate_scan_step_y)
+        #self._view.scaleSpinBox.valueChanged.connect(self.calibrate_)
+        #self._view.scaleSelector.currentIndexChanged.connect(self.calibrate_)
+        self._view.rockingAngleSpinBox.valueChanged.connect(self.calibrate_rocking_angle)
+        self._view.spotSizeSpinBox.valueChanged.connect(self.calibrate_spotsize)
+        self._view.cameraLengthSpinBox.valueChanged.connect(self.calibrate_cameralength)
+        self._view.magnificationSpinBox.valueChanged.connect(self.calibrate_magnification)
+
     def calibrate(self):
+        """
+        Sets the calibrated values of the acquisition parameters
+        :return:
+        """
         self.calibrate_spotsize()
         self.calibrate_cameralength()
         self.calibrate_magnification()
@@ -607,37 +622,68 @@ class mib2hspyController(object):
         self.calibrate_rocking_angle()
 
     def calibrate_cameralength(self):
+        """
+        Set the calibrated value of the cameralength
+        :return:
+        """
         self._parameter_controller.get_model().cameralength.set_value(self.get_cameralength_calibration())
         self._parameter_controller.update()
 
     def calibrate_magnification(self):
+        """
+        Set the calibrated value of the magnification
+        :return:
+        """
         self._parameter_controller.get_model().magnification.set_value(self.get_magnification_calibration())
         self._parameter_controller.update()
 
     def calibrate_rocking_angle(self):
+        """
+        Set the calibrated value of the rocking(precession) angle.
+        :return:
+        """
         self._parameter_controller.get_model().rocking_angle.set_value(self.get_rocking_angle_calibration())
         self._parameter_controller.update()
 
     def calibrate_scan_step_x(self):
+        """
+        Set the calibrated value of the scan step in x-direction
+        :return:
+        """
         self._parameter_controller.get_model().scan_step_x.set_value(self.get_x_scan_calibration())
         self._parameter_controller.update()
 
     def calibrate_scan_step_y(self):
+        """
+        Set the calibrated value of the scan step in y-direction
+        :return:
+        """
         self._parameter_controller.get_model().scan_step_x.set_value(self.get_y_scan_calibration())
         self._parameter_controller.update()
 
     def calibrate_condenser_aperture(self):
+        """
+        Set the calibrated value of the condenser aperture size
+        :return:
+        """
         self._parameter_controller.get_model().condenser_aperture.set_value(self.get_condenser_aperture_calibration())
         self._parameter_controller.update()
 
     def calibrate_convergence_angle(self):
+        """
+        Set the calibrated value of the convergence angle.
+        :return:
+        """
         self._parameter_controller.get_model().convergence_angle.set_value(self.get_convergence_angle_calibration())
         self._parameter_controller.update()
 
     def calibrate_spotsize(self):
+        """
+        Set the calibrated value of the spotsize. NB! This will not be a good(exact) calibration for individual experiments!!
+        :return:
+        """
         self._parameter_controller.get_model().spotsize.set_value(self.get_spotsize_calibration())
         self._parameter_controller.update()
-
 
     def get_calibration(self, name, query):
         """
@@ -671,55 +717,86 @@ class mib2hspyController(object):
             return valid_calibration
 
     def get_cameralength_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(
-            parameters=parameters)
-        return self.get_calibration('Camera Length (cm)', query)
+        """Get the calibration value from a file or from input in the GUI"""
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(
+                parameters=parameters)
+            return self.get_calibration('Camera Length (cm)', query)
+        else:
+            return self._view.cameraLengthSpinBox.value()
+
 
     def get_magnification_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
-            parameters=parameters)
-        return self.get_calibration('Magnification', query)
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
+                parameters=parameters)
+            return self.get_calibration('Magnification', query)
+        else:
+            return self._view.magnificationSpinBox.value()
 
     def get_image_scale_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        query = "`HT`== {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value} & `Mag Mode` == '{parameters.mag_mode.value}'".format(parameters=parameters)
-        return self.get_calibration('Scale (nm/px)', query)
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            query = "`HT`== {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value} & `Mag Mode` == '{parameters.mag_mode.value}'".format(
+                parameters=parameters)
+            return self.get_calibration('Scale (nm/px)', query)
+        else:
+            if self._view.scaleSelector.currentText() == 'Å/px':
+                return self._view.scaleSpinBox.value()
+            else:
+                return nan
 
     def get_diffraction_scale_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        query = "`HT`== {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(parameters=parameters)
-        return self.get_calibration('Scale (1/Å/px', query)
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            query = "`HT`== {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(
+                parameters=parameters)
+            return self.get_calibration('Scale (1/Å/px', query)
+        else:
+            if self._view.scaleSelector.currentText() == '1/Å/px':
+                return self._view.scaleSpinBox.value()
+            else:
+                return nan
 
     def get_x_scan_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        if parameters.mode.value == 'STEM':
-            query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                parameters=parameters)
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            if parameters.mode.value == 'STEM':
+                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                    parameters=parameters)
+            else:
+                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                    parameters=parameters)
+            return self.get_calibration('Step Size X (nm)', query)
         else:
-            query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                parameters=parameters)
-        return self.get_calibration('Step Size X (nm)', query)
+            return self._view.stepSizeXSpinBox.value()
 
     def get_y_scan_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        if parameters.mode.value == 'STEM':
-            query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                parameters=parameters)
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            if parameters.mode.value == 'STEM':
+                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                    parameters=parameters)
+            else:
+                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                    parameters=parameters)
+            return self.get_calibration('Step Size Y (nm)', query)
         else:
-            query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(parameters=parameters)
-        return self.get_calibration('Step Size Y (nm)', query)
+            return self._view.stepSizeYSpinBox.value()
 
     def get_image_rotation_calibration(self):
         parameters = self._parameter_controller.get_model()
-        query = "`HT` == {parameters.acceleration_voltage.value} & `Mag Mode` == '{parameters.mag_mode.value}' & `Nominal Mag` == {parameters.magnification.nominal_value}".format(parameters=parameters)
+        query = "`HT` == {parameters.acceleration_voltage.value} & `Mag Mode` == '{parameters.mag_mode.value}' & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
+            parameters=parameters)
         return self.get_calibration('Image Rotation (deg)', query)
 
     def get_scan_rotation_calibration(self):
         parameters = self._parameter_controller.get_model()
         if parameters.mode.value == 'STEM':
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}'".format(parameters=parameters)
+            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}'".format(
+                parameters=parameters)
         else:
             query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value}".format(
                 parameters=parameters)
@@ -729,12 +806,16 @@ class mib2hspyController(object):
         return self.get_rocking_angle_calibration()
 
     def get_rocking_angle_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        if parameters.mode.value == 'STEM':
-            return nan
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            if parameters.mode.value == 'STEM':
+                return nan
+            else:
+                query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
+                    parameters=parameters)
+                return self.get_calibration('Precession Angle (deg)', query)
         else:
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(parameters=parameters)
-            return self.get_calibration('Precession Angle (deg)', query)
+            return self._view.rockingAngleSpinBox.value()
 
     def get_rocking_angle_eccentricity_calibration(self):
         parameters = self._parameter_controller.get_model()
@@ -747,24 +828,32 @@ class mib2hspyController(object):
 
     def get_condenser_aperture_calibration(self):
         parameters = self._parameter_controller.get_model()
-        query = "`Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(parameters=parameters)
+        query = "`Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+            parameters=parameters)
         return self.get_calibration('Condenser Aperture (um)', query)
 
     def get_convergence_angle_calibration(self):
         parameters = self._parameter_controller.get_model()
         if parameters.mode == 'STEM':
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(parameters=parameters)
+            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+                parameters=parameters)
         else:
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(parameters=parameters)
+            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+                parameters=parameters)
         return self.get_calibration('Convergence Angle (mrad)', query)
 
     def get_spotsize_calibration(self):
-        parameters = self._parameter_controller.get_model()
-        if parameters.mode == 'TEM':
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Spot` == {parameters.spot.value}".format(parameters=parameters)
+        if self._view.useCalibrationFileRadioButton.isChecked():
+            parameters = self._parameter_controller.get_model()
+            if parameters.mode == 'TEM':
+                query = "`HT` == {parameters.acceleration_voltage.value} & `Spot` == {parameters.spot.value}".format(
+                    parameters=parameters)
+            else:
+                query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Spotsize (nm)` == {parameters.spotsize.nominal_value}".format(
+                    parameters=parameters)
+            return self.get_calibration('Spotsize (nm)', query)
         else:
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Spotsize (nm)` == {parameters.spotsize.nominal_value}".format(parameters=parameters)
-        return self.get_calibration('Spotsize (nm)', query)
+            return self._view.spotSizeSpinBox.value()
 
     def update_view(self):
         self.calibrate()

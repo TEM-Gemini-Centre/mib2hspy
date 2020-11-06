@@ -831,6 +831,9 @@
                <string>Step size</string>
               </property>
               <layout class="QGridLayout" name="gridLayout_14">
+               <item row="1" column="1">
+                <widget class="QDoubleSpinBox" name="stepSizeYSpinBox"/>
+               </item>
                <item row="0" column="0">
                 <widget class="QLabel" name="label_13">
                  <property name="text">
@@ -848,8 +851,19 @@
                <item row="0" column="1">
                 <widget class="QDoubleSpinBox" name="stepSizeXSpinBox"/>
                </item>
-               <item row="1" column="1">
-                <widget class="QDoubleSpinBox" name="stepSizeYSpinBox"/>
+               <item row="0" column="2">
+                <widget class="QLabel" name="label_12">
+                 <property name="text">
+                  <string>nm</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="2">
+                <widget class="QLabel" name="label_35">
+                 <property name="text">
+                  <string>nm</string>
+                 </property>
+                </widget>
                </item>
               </layout>
              </widget>
@@ -860,28 +874,11 @@
                <string>Scale</string>
               </property>
               <layout class="QGridLayout" name="gridLayout_15">
-               <item row="1" column="1">
-                <widget class="QDoubleSpinBox" name="scaleYSpinBox"/>
-               </item>
                <item row="0" column="0">
-                <widget class="QLabel" name="label_36">
-                 <property name="text">
-                  <string>X</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="1">
-                <widget class="QDoubleSpinBox" name="scaleXSpinBox"/>
+                <widget class="QDoubleSpinBox" name="scaleSpinBox"/>
                </item>
                <item row="1" column="0">
-                <widget class="QLabel" name="label_37">
-                 <property name="text">
-                  <string>Y</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="2">
-                <widget class="QComboBox" name="scaleXSelector">
+                <widget class="QComboBox" name="scaleSelector">
                  <item>
                   <property name="text">
                    <string>1/Å/px</string>
@@ -889,61 +886,7 @@
                  </item>
                  <item>
                   <property name="text">
-                   <string>1/nm/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
                    <string>Å/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>nm/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>mrad/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>deg/px</string>
-                  </property>
-                 </item>
-                </widget>
-               </item>
-               <item row="1" column="2">
-                <widget class="QComboBox" name="scaleYSelector">
-                 <item>
-                  <property name="text">
-                   <string>1/Å/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>1/nm/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>Å/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>nm/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>mrad/px</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>deg/px</string>
                   </property>
                  </item>
                 </widget>
@@ -986,7 +929,7 @@
                 </widget>
                </item>
                <item row="1" column="1">
-                <widget class="QDoubleSpinBox" name="SpotSizeSpinBox">
+                <widget class="QDoubleSpinBox" name="spotSizeSpinBox">
                  <property name="maximum">
                   <double>999.000000000000000</double>
                  </property>
