@@ -1,0 +1,4 @@
+SETTINGS
+default_data_root:C:\Users\emilc\OneDrive - NTNU\NORTEM\Merlin
+default_calibration_file:C:\Users\emilc\Desktop\Calibrations.csv
+END

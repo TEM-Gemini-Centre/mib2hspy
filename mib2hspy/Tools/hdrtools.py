@@ -9,6 +9,39 @@ class MedipixHDRfield(object):
     def __str__(self):
         return ('{self.name}: {self.value}')
 
+    def __int__(self):
+        return int(self.value)
+
+    def __float__(self):
+        return float(self.value)
+
+    def __add__(self, other):
+        return self.value + other
+
+    def __radd__(self, other):
+        return other + self.value
+
+    def __sub__(self, other):
+        return self.value - other
+
+    def __rsub__(self, other):
+        return other - self.value
+
+    def __mul__(self, other):
+        return self.value * other
+
+    def __rmul__(self, other):
+        return other * self.value
+
+    def __truediv__(self, other):
+        return self.value / other
+
+    def __rtruediv__(self, other):
+        return other / self.value
+
+    def __pow__(self, power, modulo=None):
+        return self.value.__pow__(power, modulo=modulo)
+
     def as_dict(self):
         return {self.name.lower.replace(' ', ''): self.value}
 
@@ -45,6 +78,9 @@ class MedipixHDRcontent(object):
         self.medipix_clock = MedipixHDRfield('Medipix Clock (MHz)', '')
         self.readout_system = MedipixHDRfield('Readout System', '')
         self.software_version = MedipixHDRfield('Software Version', '')
+
+    def __repr__(self):
+        return '{self.__class__.__name__}({self.filename!r})'.format(self=self)
 
     def __str__(self):
         content = '\n\t'.join(['{field.name}: {field.value}'.format(field=field) for field in self])
@@ -140,3 +176,4 @@ class MedipixHDRcontent(object):
         """Clears the header object of content"""
         for field in self:
             field.value = ''
+        self.filename = Path('.')
