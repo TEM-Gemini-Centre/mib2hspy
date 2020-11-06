@@ -597,11 +597,14 @@ class mib2hspyController(object):
         self._parameter_controller.stepSizeYChanged.connect(self.calibrate_scan_step_y)
 
     def calibrate(self):
-        parameters = self._parameter_controller.get_model()
-        parameters.cameralength.set_value(self.get_cameralength_calibration())
-        parameters.scan_step_x.set_value(self.get_x_scan_calibration())
-        parameters.scan_step_y.set_value(self.get_y_scan_calibration())
-        self._parameter_controller.update()
+        self.calibrate_spotsize()
+        self.calibrate_cameralength()
+        self.calibrate_magnification()
+        self.calibrate_scan_step_x()
+        self.calibrate_scan_step_x()
+        self.calibrate_condenser_aperture()
+        self.calibrate_convergence_angle()
+        self.calibrate_rocking_angle()
 
     def calibrate_cameralength(self):
         self._parameter_controller.get_model().cameralength.set_value(self.get_cameralength_calibration())
@@ -660,6 +663,8 @@ class mib2hspyController(object):
             valid_calibration = valid_calibration[name].values
             if len(valid_calibration) > 0:
                 valid_calibration = valid_calibration[-1]
+            else:
+                valid_calibration = nan
         finally:
             logging.getLogger().info(
                 'Got "{name}" calibration {calibration}'.format(name=name, calibration=valid_calibration))

@@ -9,7 +9,7 @@ class Parameter(object):
     """
     A parameter
     """
-
+    allowed_value_types = (int, float, str, datetime, date)
     def __init__(self, parameter_name, value, units):
         """
         Create a parameter
@@ -25,7 +25,7 @@ class Parameter(object):
             raise TypeError('Parameter name must be a string!')
         if not isinstance(units, str):
             raise TypeError('Units must be a string!')
-        if not isinstance(value, (int, float, str, datetime, date)):
+        if not isinstance(value, self.allowed_value_types):
             raise TypeError('Value must be int, float, str, or datetime!')
         self.name = parameter_name
         self.value = value
@@ -60,8 +60,8 @@ class Parameter(object):
         :type newvalue: int, float, str, datetime, date
         :return:
         """
-        if not isinstance(newvalue, (int, float, str, datetime, date)):
-            raise TypeError()
+        if not isinstance(newvalue, self.allowed_value_types):
+            raise TypeError('Value {newvalue!r} of type {invalid_type} is not of supported types {self.allowed_value_types}!'.format(newvalue=newvalue, invalid_type=type(newvalue), self=self))
         self.value = newvalue
 
     def __str__(self):
