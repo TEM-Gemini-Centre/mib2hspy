@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mib2hspy',
-    version='0.0.1',
+    version='0.1.1',
     license='GPLv3',
     author='Emil Christiansen',
     author_email='emil.christiansen@ntnu.no',
