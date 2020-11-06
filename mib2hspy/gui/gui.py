@@ -45,6 +45,58 @@ class MainWindow(QtWidgets.QMainWindow):
         uic.loadUi('./source/QTCmib2hspy/mainwindow.ui', self)
         self.setWindowTitle('mib2hspy converter')
         self.threadpool = QThreadPool()
+        self._settings = {}
+
+        self.read_settings()
+
+    def read_settings(self, settings_file_name='settings.txt'):
+        """
+        Read gui settings from a settings file.
+        :param settings_file_name: Path to settings file
+        :return:
+        """
+        with open(settings_file_name, 'r') as settings_file:
+            lines = settings_file.readlines()
+            for line in lines:
+                try:
+                    key, value = line.split(':', maxsplit=1)
+                    key = key.strip()
+                    value = value.strip()
+                except Exception as e:
+                    logging.getLogger().error(e)
+                else:
+                    self._settings.update({key: value})
+
+    def write_settings(self, settings_file_name='settings.txt'):
+        """
+        Write settings to a settings file.
+        :param settings_file_name: Path to settings file
+        :return:
+        """
+        with open(settings_file_name, 'w') as settings_file:
+            settings_file.write('SETTINGS\n')
+            for key in self._settings:
+                settings_file.write('{key}:{value}\n'.format(key=key, value=self._settings[key]))
+            settings_file.write('END')
+
+    def set_setting(self, setting, value, write_settings=True):
+        """
+        Sets a setting to a given value.
+        :param setting: The setting to beset
+        :param value: The value to set
+        :param write_settings: Whether to write the settings to settings file or not
+        :type setting: str
+        :type value: any
+        :type write_settings: bool
+        :return:
+        """
+        self._settings.update({setting: value})
+        logging.getLogger().info('Set setting "{setting}" to "{value}"'.format(setting=setting, value=value))
+        if write_settings:
+            self.write_settings()
+
+    def get_setting(self, setting):
+        return self._settings[setting]
 
     @pyqtSlot(name='browseInputFile', result=str)
     def browseInputFile(self):
@@ -59,7 +111,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
             None,
             "Select file",
-            "",
+            str(self._settings['default_data_root']),
             "mib Files (*.mib);;hspy Files (*.hspy);;All Files (*)",
             options=options)
         return fileName
@@ -70,7 +122,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
             None,
             "Select file",
-            "",
+            str(Path(self._settings['default_calibration_file']).parent),
             "csv Files (*.csv);;All Files (*)",
             options=options)
         return fileName
@@ -517,6 +569,7 @@ class mib2hspyModel(QObject):
 
 
 class mib2hspyController(object):
+
     def __init__(self, view, model=None, notes_window=None, parameters_controller=None):
         """
         Create controller for the mib2hspy gui
@@ -537,6 +590,7 @@ class mib2hspyController(object):
         self.setupLogging()
         self.setupInputFileSignals()
         self.setupCalibrationFileSignals()
+        self.setupSettingsSignals()
 
         self._model.headerLoaded.connect(lambda: self.set_scan_size_from_header())
         self._model.calibrationLoaded.connect(lambda: self.calibrate())
@@ -570,6 +624,7 @@ class mib2hspyController(object):
         self._model.dataCleared.connect(lambda: self.update_view())
         self._model.headerCleared.connect(lambda: self.update_view())
         self._view.clearPushButton.clicked.connect(self.clear)
+        self._view.readFileInfoButton.clicked.connect(self.show_file_info)
 
     def setupCalibrationFileSignals(self):
         self._view.browseCalibrationButton.clicked.connect(
@@ -600,13 +655,60 @@ class mib2hspyController(object):
         self._view.useManualCalibrationRadioButton.clicked.connect(self.calibrate)
         self._view.stepSizeXSpinBox.valueChanged.connect(self.calibrate_scan_step_x)
         self._view.stepSizeYSpinBox.valueChanged.connect(self.calibrate_scan_step_y)
-        #self._view.scaleSpinBox.valueChanged.connect(self.calibrate_)
-        #self._view.scaleSelector.currentIndexChanged.connect(self.calibrate_)
+        # self._view.scaleSpinBox.valueChanged.connect(self.calibrate_)
+        # self._view.scaleSelector.currentIndexChanged.connect(self.calibrate_)
         self._view.rockingAngleSpinBox.valueChanged.connect(self.calibrate_rocking_angle)
         self._view.spotSizeSpinBox.valueChanged.connect(self.calibrate_spotsize)
         self._view.cameraLengthSpinBox.valueChanged.connect(self.calibrate_cameralength)
         self._view.magnificationSpinBox.valueChanged.connect(self.calibrate_magnification)
 
+    def setupSettingsSignals(self):
+        self._view.actionSettings.triggered.connect(self.open_settings_dialog)
+        try:
+            self._view.calibrationFilePathField.setText(self._view.get_setting('default_calibration_file'))
+            self._model.load_calibrationfile(self._view.get_setting('default_calibration_file'))
+        except Exception as e:
+            logging.getLogger().error(e)
+            logging.getLogger().info('Could not load default calibration file. No calibration file loaded.')
+
+    def open_settings_dialog(self):
+        logging.getLogger().info('Opening settings dialog')
+        dialog = SettingsDialog(self._view)
+        dialog.dataPathField.setText(self._view.get_setting('default_data_root'))
+        dialog.calibrationPathField.setText(self._view.get_setting('default_calibration_file'))
+        if dialog.exec_():
+            data_path = Path(dialog.dataPathField.text())
+            calibration_path = Path(dialog.calibrationPathField.text())
+
+            if data_path.is_dir():
+                self._view.set_setting('default_data_root', str(data_path))
+            else:
+                logging.getLogger().info(
+                    'Default data root {data_path!r} is invalid, will continue to use {setting!r}'.format(
+                        data_path=data_path, setting=self._view.get_setting('default_data_root')))
+            if calibration_path.suffix == '.csv' and calibration_path.exists():
+                self._view.set_setting('default_calibration_file', str(calibration_path))
+                self._view.calibrationFilePathField.setText(str(calibration_path))
+                self._model.load_calibrationfile(self._view.calibrationFilePathField.text())
+            else:
+                logging.getLogger().info(
+                    'Calibration file path {calibration_path!r} is invalid, will continue to use {setting!r}'.format(
+                        calibration_path=calibration_path, setting=self._view.get_setting('default_calibration_file')))
+        else:
+            logging.getLogger().info('Did not change settings')
+
+    def show_file_info(self):
+        if self._model.data is not None:
+            self._view.bitModeIndicator.setText(str(self._model.data.data.dtype))
+            self._view.maxValueIndicator.setText(str(self.get_max_value()))
+
+    def get_max_value(self):
+        if self._model.data is not None:
+            #self._model.data.compute()
+            max_value = self._model.data.max(axis=[0, 1, 2])
+            return int(max_value.data[0])
+        else:
+            return nan
     def calibrate(self):
         """
         Sets the calibrated values of the acquisition parameters
@@ -725,7 +827,6 @@ class mib2hspyController(object):
             return self.get_calibration('Camera Length (cm)', query)
         else:
             return self._view.cameraLengthSpinBox.value()
-
 
     def get_magnification_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
@@ -859,8 +960,10 @@ class mib2hspyController(object):
         self.calibrate()
         if self._model.data is not None:
             self._view.fileStatusIndicator.setActive()
+            self._view.readFileInfoButton.setEnabled(True)
         else:
             self._view.fileStatusIndicator.setNone()
+            self._view.readFileInfoButton.setEnabled(False)
 
     def clear(self):
         logging.getLogger().info('Clearing data and metadata')
@@ -1108,6 +1211,12 @@ class mib2hspyController(object):
         del signal
 
 
+class SettingsDialog(QtWidgets.QDialog):
+    def __init__(self, parent):
+        super(SettingsDialog, self).__init__(parent)
+        uic.loadUi('./source/QTCmib2hspy/settingsdialog.ui', self)
+
+
 def main(logfile=None):
     """
     Intialize a standard GUI with logging
@@ -1129,7 +1238,7 @@ def main(logfile=None):
     fileHandler = logging.FileHandler(str(debug_file))
     fileHandler.setFormatter(logformat)
     logging.getLogger().addHandler(fileHandler)
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.INFO)
     logging.getLogger().addHandler((logging.StreamHandler(sys.stdout)))
     # sys.stdout = LogStream(logging.getLogger(), logging.DEBUG)
     # sys.stderr = LogStream(logging.getLogger(), logging.ERROR)

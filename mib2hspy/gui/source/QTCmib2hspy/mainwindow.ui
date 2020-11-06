@@ -821,6 +821,9 @@
            <layout class="QHBoxLayout" name="horizontalLayout_9">
             <item>
              <widget class="QGroupBox" name="groupBox_7">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="sizePolicy">
                <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
                 <horstretch>0</horstretch>
@@ -870,6 +873,9 @@
             </item>
             <item>
              <widget class="QGroupBox" name="groupBox_8">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="title">
                <string>Scale</string>
               </property>
@@ -896,6 +902,9 @@
             </item>
             <item>
              <widget class="QGroupBox" name="groupBox_9">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="title">
                <string>Beam</string>
               </property>
@@ -947,6 +956,9 @@
             </item>
             <item>
              <widget class="QGroupBox" name="groupBox_10">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="title">
                <string>Camera</string>
               </property>
@@ -1010,7 +1022,7 @@
          </size>
         </property>
         <property name="text">
-         <string>Clear/reset metadata</string>
+         <string>Clear data and metadata</string>
         </property>
        </widget>
       </item>
@@ -1472,15 +1484,14 @@
     </property>
     <addaction name="actionExit"/>
     <addaction name="actionClear"/>
+    <addaction name="actionSettings"/>
    </widget>
    <widget class="QMenu" name="menuMetadata">
     <property name="title">
      <string>Metadata</string>
     </property>
     <addaction name="actionAcquisition_parameters"/>
-    <addaction name="actionCalibration_data"/>
     <addaction name="actionSupporting_data"/>
-    <addaction name="actionNotes"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuMetadata"/>
@@ -1569,6 +1580,16 @@
     <string>Clear</string>
    </property>
   </action>
+  <action name="actionSettings2">
+   <property name="text">
+    <string>Settings</string>
+   </property>
+  </action>
+  <action name="actionSettings">
+   <property name="text">
+    <string>Settings</string>
+   </property>
+  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <customwidgets>
@@ -1579,7 +1600,120 @@
   </customwidget>
  </customwidgets>
  <resources/>
- <connections/>
+ <connections>
+  <connection>
+   <sender>useManualCalibrationRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>groupBox_7</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>94</x>
+     <y>326</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>130</x>
+     <y>366</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>useManualCalibrationRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>groupBox_8</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>245</x>
+     <y>333</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>212</x>
+     <y>359</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>useManualCalibrationRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>groupBox_9</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>298</x>
+     <y>334</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>312</x>
+     <y>353</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>useManualCalibrationRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>groupBox_10</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>489</x>
+     <y>334</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>512</x>
+     <y>365</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>useCalibrationFileRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>calibrationFilePathField</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>98</x>
+     <y>261</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>105</x>
+     <y>303</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>useCalibrationFileRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>browseCalibrationButton</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>394</x>
+     <y>264</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>549</x>
+     <y>291</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>useCalibrationFileRadioButton</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>loadCalibrationButton</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>584</x>
+     <y>263</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>610</x>
+     <y>289</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
  <slots>
   <signal>fileInfoStatus(QString)</signal>
   <signal>fileBitMode(QString)</signal>

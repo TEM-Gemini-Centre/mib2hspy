@@ -30,7 +30,7 @@
       </widget>
      </item>
      <item row="0" column="1">
-      <widget class="QLineEdit" name="lineEdit">
+      <widget class="QLineEdit" name="dataPathField">
        <property name="text">
         <string>C:\Users\emilc\OneDrive - NTNU\NORTEM\Merlin\2020_09_12_NanowireSC58A8_MerlinCalibrations\NWX\2020_09_12_NanowireSC58A8_Merlin_scans</string>
        </property>
@@ -47,7 +47,7 @@
       </widget>
      </item>
      <item row="1" column="1">
-      <widget class="QLineEdit" name="lineEdit_2">
+      <widget class="QLineEdit" name="calibrationPathField">
        <property name="text">
         <string>C:\Users\emilc\Desktop\Calibrations.csv</string>
        </property>
@@ -79,12 +79,12 @@
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>248</x>
-     <y>254</y>
+     <x>361</x>
+     <y>96</y>
     </hint>
     <hint type="destinationlabel">
      <x>157</x>
-     <y>274</y>
+     <y>127</y>
     </hint>
    </hints>
   </connection>
@@ -95,12 +95,12 @@
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>316</x>
-     <y>260</y>
+     <x>429</x>
+     <y>102</y>
     </hint>
     <hint type="destinationlabel">
      <x>286</x>
-     <y>274</y>
+     <y>127</y>
     </hint>
    </hints>
   </connection>
