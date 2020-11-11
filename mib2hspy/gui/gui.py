@@ -704,11 +704,12 @@ class mib2hspyController(object):
 
     def get_max_value(self):
         if self._model.data is not None:
-            #self._model.data.compute()
+            # self._model.data.compute()
             max_value = self._model.data.max(axis=[0, 1, 2])
             return int(max_value.data[0])
         else:
             return nan
+
     def calibrate(self):
         """
         Sets the calibrated values of the acquisition parameters
@@ -1125,20 +1126,21 @@ class mib2hspyController(object):
         :param chunksize: The chunksize to use
         :type data_array: array-like
         :type chunksize: int
-        :return: The rechunked data array
+        :return: data_array, chunks. The rechunked data array and the chunks used
         :rtype: array-like
         """
         self._view.rechunkedIndicator.setBusy()
         if chunksize != 'None':
-            chunks = [int(chunksize)] * len(data_array.shape)
+            chunks = tuple([int(chunksize)] * len(data_array.shape))
             logging.getLogger().info('Rechunking data to {} chunks'.format(chunks))
             data_array = data_array.rechunk(chunks)
             self._view.rechunkedIndicator.setActive()
             logging.getLogger().info('Rechunked data')
         else:
             logging.getLogger().info('Did not rechunk data')
+            chunks = None
             self._view.rechunkedIndicator.setInactive()
-        return data_array
+        return data_array, chunks
 
     def generate_metadata(self):
         """
@@ -1194,7 +1196,7 @@ class mib2hspyController(object):
 
         data_array = self.reshape_data(data_array, nx, ny, dx, dy)
         data_array = self.downsample_data(data_array, self._view.bitDepthSelector.currentText())
-        data_array = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText())
+        data_array, chunks = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText())
 
         logging.getLogger().info('Creating signal from converted data')
         signal = pxm.LazyElectronDiffraction2D(data_array)
@@ -1204,8 +1206,12 @@ class mib2hspyController(object):
 
         logging.getLogger().info('Writing data')
         self._view.writtenIndicator.setBusy()
-        signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()),
-                    overwrite=self._view.overwriteCheckBox.isChecked())
+        if chunks is not None:
+            signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()), chunks=chunks,
+                        overwrite=self._view.overwriteCheckBox.isChecked())
+        else:
+            signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()),
+                        overwrite=self._view.overwriteCheckBox.isChecked())
         self._view.writtenIndicator.setActive()
         logging.getLogger().info('Wrote data')
         del signal
