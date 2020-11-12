@@ -116,6 +116,25 @@ class MainWindow(QtWidgets.QMainWindow):
             options=options)
         return fileName
 
+    @pyqtSlot(str, name='browseInputFile', result=str)
+    def browseInputFile(self, root=None):
+        options = QtWidgets.QFileDialog.Options()
+        if root is None:
+            fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
+                None,
+                "Select file",
+                str(self._settings['default_data_root']),
+                "mib Files (*.mib);;hspy Files (*.hspy);;All Files (*)",
+                options=options)
+        else:
+            fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
+                None,
+                "Select file",
+                str(root),
+                "mib Files (*.mib);;hspy Files (*.hspy);;All Files (*)",
+                options=options)
+        return fileName
+
     @pyqtSlot(name='browseCalibrationFile', result=str)
     def browseCalibrationFile(self):
         options = QtWidgets.QFileDialog.Options()
@@ -612,8 +631,9 @@ class mib2hspyController(object):
         Setup the input file signals of the GUI
         :return:
         """
-        self._view.browseInputFileButton.clicked.connect(
-            lambda: self._view.inputFilePathField.setText(self._view.browseInputFile()))
+        #self._view.browseInputFileButton.clicked.connect(
+        #    lambda: self._view.inputFilePathField.setText(self._view.browseInputFile()))
+        self._view.browseInputFileButton.clicked.connect(lambda: self.browse_input_file())
         self._view.loadInputFileButton.clicked.connect(self.load_data)
         self._model.dataLoaded.connect(self.update_view)
         self._model.dataLoaded.connect(self._model.load_hdr)
@@ -625,6 +645,13 @@ class mib2hspyController(object):
         self._model.headerCleared.connect(lambda: self.update_view())
         self._view.clearPushButton.clicked.connect(self.clear)
         self._view.readFileInfoButton.clicked.connect(self.show_file_info)
+
+    def browse_input_file(self):
+        if self._model.filename is None:
+            filename = self._view.browseInputFile()
+        else:
+            filename = self._view.browseInputFile(str(Path(self._model.filename).parent))
+        self._view.inputFilePathField.setText(filename)
 
     def setupCalibrationFileSignals(self):
         self._view.browseCalibrationButton.clicked.connect(
