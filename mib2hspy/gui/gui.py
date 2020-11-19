@@ -8,6 +8,9 @@ import pyxem as pxm
 import pandas as pd
 from numpy import nan
 
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+
 import time
 # from .guiTools import tools
 from mib2hspy.gui.guiTools import Worker, QTextEditLogger, DataFrameModel
@@ -1202,6 +1205,55 @@ class mib2hspyController(object):
         logging.getLogger().info('Generated metadata:\n{metadata}'.format(metadata=metadata))
         return metadata
 
+    def generate_vbf(self, signal, figsize=(6, 6), x_offset=0.01, y_offset=0.01, fraction=1 / 5, color='w',
+                     scalebarwidth=0.01):
+        """
+        Generate a VBF image
+
+        :param signal: The signal to use
+        :param figsize: The size of the resulting figure in inches
+        :param x_offset: Offset of scalebar in x-direction in fraction of axis size
+        :param y_offset: Offset of scalebar in y-direction in fraction of axis size
+        :param fraction: Length of scalebar in fraction of axis size.
+        :param color: Color of scalebar
+        :param scalebarwidth: Width of scalebar in fraction of axis size
+        :type signal: hyperspy.signals.BaseSignal
+        :type figsize: tuple
+        :type x_offset: float
+        :type y_offset: float
+        :type fraction: float
+        :type color: str
+        :type scalebarwidth: float
+        :return:
+        """
+        logging.getLogger().info('Generating VBF image')
+        cx = self._view.vbfCxSpinBox.value()
+        cy = self._view.vbfCySpinBox.value()
+        width = self._view.vbfWidthSpinBox.value()
+        logging.getLogger().info('VBF center: ({cx}, {cy}), width: {width}'.format(cx=cx, cy=cy, width=width))
+        # roi = pxm.roi.CircleROI(cx=cx, cy=cy, r=r)
+        # vbf = signal.get_integrated_intensity(roi)
+
+        logging.getLogger().info('Generated VBF image')
+        vbf = signal.isig[cx - width:cx + width + 1, cy - width:cy + width + 1].sum(axis=[2, 3])
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[])
+        ax.imshow(vbf.data)
+        image_width = vbf.axes_manager[0].size * vbf.axes_manager[0].scale
+        units = vbf.axes_manager[0].units
+        d = round(image_width * fraction, ndigits=-1)
+        width = d / image_width
+
+        scalebar = Rectangle(xy=(x_offset, y_offset), facecolor=color, width=width, height=scalebarwidth,
+                             transform=ax.transAxes)
+        ax.add_patch(scalebar)
+        ax.annotate('{d:.0f} {u}'.format(d=d, u=units), xy=(x_offset + width / 2, y_offset + scalebarwidth), color=color,
+                    ha='center', va='bottom', xycoords='axes fraction')
+        path = Path(self._view.inputFilePathField.text()).with_suffix('.png')
+        plt.savefig(str(path))
+        logging.getLogger().info('Saved VBF image to {}'.format(path))
+        plt.close('all')
+
     def convert_data(self):
         """
         Convert the data, and save it as a signal.
@@ -1241,6 +1293,9 @@ class mib2hspyController(object):
                         overwrite=self._view.overwriteCheckBox.isChecked())
         self._view.writtenIndicator.setActive()
         logging.getLogger().info('Wrote data')
+
+        if self._view.vbfGroupBox.isChecked():
+            self.generate_vbf(signal)
         del signal
 
 
