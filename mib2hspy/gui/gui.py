@@ -745,6 +745,7 @@ class mib2hspyController(object):
     def show_vbf(self):
         signal, chunks = self.prepare_data(update_indicators=False)
         self.generate_vbf(signal, save=False)
+        del signal
 
     def calibrate(self):
         """
