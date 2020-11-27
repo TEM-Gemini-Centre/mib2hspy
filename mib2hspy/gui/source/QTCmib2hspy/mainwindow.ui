@@ -363,7 +363,7 @@
            </spacer>
           </item>
           <item row="3" column="0">
-           <widget class="QPushButton" name="pushButton">
+           <widget class="QPushButton" name="vbfPushButton">
             <property name="text">
              <string>Show VBF</string>
             </property>
@@ -890,7 +890,11 @@
               </property>
               <layout class="QGridLayout" name="gridLayout_14">
                <item row="1" column="1">
-                <widget class="QDoubleSpinBox" name="stepSizeYSpinBox"/>
+                <widget class="QDoubleSpinBox" name="stepSizeYSpinBox">
+                 <property name="singleStep">
+                  <double>0.100000000000000</double>
+                 </property>
+                </widget>
                </item>
                <item row="0" column="0">
                 <widget class="QLabel" name="label_13">
@@ -907,7 +911,11 @@
                 </widget>
                </item>
                <item row="0" column="1">
-                <widget class="QDoubleSpinBox" name="stepSizeXSpinBox"/>
+                <widget class="QDoubleSpinBox" name="stepSizeXSpinBox">
+                 <property name="singleStep">
+                  <double>0.100000000000000</double>
+                 </property>
+                </widget>
                </item>
                <item row="0" column="2">
                 <widget class="QLabel" name="label_12">
@@ -936,7 +944,11 @@
               </property>
               <layout class="QGridLayout" name="gridLayout_15">
                <item row="0" column="0">
-                <widget class="QDoubleSpinBox" name="scaleSpinBox"/>
+                <widget class="QDoubleSpinBox" name="scaleSpinBox">
+                 <property name="decimals">
+                  <number>5</number>
+                 </property>
+                </widget>
                </item>
                <item row="1" column="0">
                 <widget class="QComboBox" name="scaleSelector">
@@ -973,6 +985,9 @@
                </item>
                <item row="0" column="1">
                 <widget class="QDoubleSpinBox" name="rockingAngleSpinBox">
+                 <property name="decimals">
+                  <number>3</number>
+                 </property>
                  <property name="maximum">
                   <double>10.000000000000000</double>
                  </property>
@@ -997,6 +1012,9 @@
                  <property name="maximum">
                   <double>999.000000000000000</double>
                  </property>
+                 <property name="singleStep">
+                  <double>0.100000000000000</double>
+                 </property>
                 </widget>
                </item>
                <item row="1" column="2">
@@ -1020,8 +1038,14 @@
               <layout class="QGridLayout" name="gridLayout_17">
                <item row="0" column="1">
                 <widget class="QDoubleSpinBox" name="cameraLengthSpinBox">
+                 <property name="decimals">
+                  <number>4</number>
+                 </property>
                  <property name="maximum">
                   <double>500.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>0.100000000000000</double>
                  </property>
                 </widget>
                </item>
@@ -1050,6 +1074,9 @@
                 <widget class="QDoubleSpinBox" name="magnificationSpinBox">
                  <property name="maximum">
                   <double>10000000.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>1000.000000000000000</double>
                  </property>
                 </widget>
                </item>
@@ -1910,8 +1937,8 @@
      <y>334</y>
     </hint>
     <hint type="destinationlabel">
-     <x>512</x>
-     <y>365</y>
+     <x>803</x>
+     <y>452</y>
     </hint>
    </hints>
   </connection>
@@ -1942,8 +1969,8 @@
      <y>264</y>
     </hint>
     <hint type="destinationlabel">
-     <x>549</x>
-     <y>291</y>
+     <x>691</x>
+     <y>313</y>
     </hint>
    </hints>
   </connection>
@@ -1958,8 +1985,8 @@
      <y>263</y>
     </hint>
     <hint type="destinationlabel">
-     <x>610</x>
-     <y>289</y>
+     <x>777</x>
+     <y>313</y>
     </hint>
    </hints>
   </connection>
