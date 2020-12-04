@@ -8,6 +8,9 @@ import pyxem as pxm
 import pandas as pd
 from numpy import nan
 
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+
 import time
 # from .guiTools import tools
 from mib2hspy.gui.guiTools import Worker, QTextEditLogger, DataFrameModel
@@ -116,6 +119,25 @@ class MainWindow(QtWidgets.QMainWindow):
             options=options)
         return fileName
 
+    @pyqtSlot(str, name='browseInputFile', result=str)
+    def browseInputFile(self, root=None):
+        options = QtWidgets.QFileDialog.Options()
+        if root is None:
+            fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
+                None,
+                "Select file",
+                str(self._settings['default_data_root']),
+                "mib Files (*.mib);;hspy Files (*.hspy);;All Files (*)",
+                options=options)
+        else:
+            fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
+                None,
+                "Select file",
+                str(root),
+                "mib Files (*.mib);;hspy Files (*.hspy);;All Files (*)",
+                options=options)
+        return fileName
+
     @pyqtSlot(name='browseCalibrationFile', result=str)
     def browseCalibrationFile(self):
         options = QtWidgets.QFileDialog.Options()
@@ -209,12 +231,12 @@ class ParameterController(QObject):
         self._view.magnificationSpinBox.valueChanged.connect(lambda v: self.update())
         self._view.magnificationSelector.currentTextChanged.connect(self._model.set_mag_mode)
         self._view.magnificationSelector.currentTextChanged.connect(lambda v: self.update())
-        self._view.magnificationGroupBox.clicked.connect(self.toggle_magnification)
+        self._view.magnificationCheckBox.clicked.connect(self.toggle_magnification)
         self._view.magnificationSpinBox.valueChanged.connect(self.magnificationChanged)
         self._view.magnificationSelector.currentIndexChanged.connect(self.magModeChanged)
 
     def toggle_magnification(self):
-        if self._view.magnificationGroupBox.isChecked():
+        if self._view.magnificationCheckBox.isChecked():
             self._model.set_nominal_magnification(self._view.magnificationSpinBox.value())
             self._model.set_mag_mode(self._view.magnificationSelector.currentText())
         else:
@@ -226,11 +248,11 @@ class ParameterController(QObject):
     def setupCameralength(self):
         self._view.cameraLengthSpinBox.valueChanged.connect(self._model.set_nominal_cameralength)
         self._view.cameraLengthSpinBox.valueChanged.connect(lambda v: self.update())
-        self._view.cameraLengthGroupBox.clicked.connect(self.toggle_cameralength)
+        self._view.cameraLengthCheckBox.clicked.connect(self.toggle_cameralength)
         self._view.cameraLengthSpinBox.valueChanged.connect(self.cameralengthChanged)
 
     def toggle_cameralength(self):
-        if self._view.cameraLengthGroupBox.isChecked():
+        if self._view.cameraLengthCheckBox.isChecked():
             self._model.set_nominal_cameralength(self._view.cameraLengthSpinBox.value())
         else:
             self._model.set_nominal_cameralength(nan)
@@ -240,11 +262,11 @@ class ParameterController(QObject):
     def setupAccelerationVoltage(self):
         self._view.highTensionSpinBox.valueChanged.connect(self._model.set_acceleration_voltage)
         self._view.highTensionSpinBox.valueChanged.connect(self.update)
-        self._view.highTensionGroupBox.clicked.connect(self.toggle_acceleration_voltage)
+        self._view.highTensionCheckBox.clicked.connect(self.toggle_acceleration_voltage)
         self._view.highTensionSpinBox.valueChanged.connect(self.accelerationVoltageChanged)
 
     def toggle_acceleration_voltage(self):
-        if self._view.highTensionGroupBox.isChecked():
+        if self._view.highTensionCheckBox.isChecked():
             self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value())
         else:
             self._model.set_acceleration_voltage(nan)
@@ -259,11 +281,11 @@ class ParameterController(QObject):
     def setupAlpha(self):
         self._view.alphaSpinBox.valueChanged.connect(self._model.set_alpha)
         self._view.alphaSpinBox.valueChanged.connect(self.update)
-        self._view.alphaGroupBox.clicked.connect(self.toggle_alpha)
+        self._view.alphaCheckBox.clicked.connect(self.toggle_alpha)
         self._view.alphaSpinBox.valueChanged.connect(self.alphaChanged)
 
     def toggle_alpha(self):
-        if self._view.alphaGroupBox.isChecked():
+        if self._view.alphaCheckBox.isChecked():
             self._model.set_alpha(self._view.alphaSpinBox.value())
         else:
             self._model.set_alpha(nan)
@@ -273,11 +295,11 @@ class ParameterController(QObject):
     def setupSpot(self):
         self._view.spotSpinBox.valueChanged.connect(self._model.set_spot)
         self._view.spotSpinBox.valueChanged.connect(self.update)
-        self._view.spotGroupBox.clicked.connect(self.toggle_spot)
+        self._view.spotCheckBox.clicked.connect(self.toggle_spot)
         self._view.spotSpinBox.valueChanged.connect(self.spotChanged)
 
     def toggle_spot(self):
-        if self._view.spotGroupBox.isChecked():
+        if self._view.spotCheckBox.isChecked():
             self._model.set_spot(self._view.spotSpinBox.value())
         else:
             self._model.set_spot(nan)
@@ -287,11 +309,11 @@ class ParameterController(QObject):
     def setupSpotSize(self):
         self._view.spotSizeSpinBox.valueChanged.connect(self._model.set_nominal_spotsize)
         self._view.spotSizeSpinBox.valueChanged.connect(self.update)
-        self._view.spotSizeGroupBox.clicked.connect(self.toggle_spot_size)
+        self._view.spotSizeCheckBox.clicked.connect(self.toggle_spot_size)
         self._view.spotSizeSpinBox.valueChanged.connect(self.spotSizeChanged)
 
     def toggle_spot_size(self):
-        if self._view.spotSizeGroupBox.isChecked():
+        if self._view.spotSizeCheckBox.isChecked():
             self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
         else:
             self._model.set_nominal_spotsize(nan)
@@ -301,11 +323,11 @@ class ParameterController(QObject):
     def setupCondenserAperture(self):
         self._view.condenserApertureSpinBox.valueChanged.connect(self._model.set_nominal_condenser_aperture)
         self._view.condenserApertureSpinBox.valueChanged.connect(self.update)
-        self._view.condenserApertureGroupBox.clicked.connect(self.toggle_condenser_aperture)
+        self._view.condenserApertureCheckBox.clicked.connect(self.toggle_condenser_aperture)
         self._view.condenserApertureSpinBox.valueChanged.connect(self.condenserApertureChanged)
 
     def toggle_condenser_aperture(self):
-        if self._view.condenserApertureGroupBox.isChecked():
+        if self._view.condenserApertureCheckBox.isChecked():
             self._model.set_nominal_condenser_aperture(self._view.condenserApertureSpinBox.value())
         else:
             self._model.set_nominal_condenser_aperture(nan)
@@ -315,11 +337,11 @@ class ParameterController(QObject):
     def setupConvergenceAngle(self):
         self._view.convergenceAngleSpinBox.valueChanged.connect(self._model.set_nominal_convergence_angle)
         self._view.convergenceAngleSpinBox.valueChanged.connect(self.update)
-        self._view.convergenceAngleGroupBox.clicked.connect(self.toggle_convergence_angle)
+        self._view.convergenceAngleCheckBox.clicked.connect(self.toggle_convergence_angle)
         self._view.convergenceAngleSpinBox.valueChanged.connect(self.convergenceAngleChanged)
 
     def toggle_convergence_angle(self):
-        if self._view.convergenceAngleGroupBox.isChecked():
+        if self._view.convergenceAngleCheckBox.isChecked():
             self._model.set_nominal_convergence_angle(self._view.convergenceAngleSpinBox.value())
         else:
             self._model.set_nominal_convergence_angle(nan)
@@ -329,11 +351,11 @@ class ParameterController(QObject):
     def setupPrecessionAngle(self):
         self._view.precessionAngleSpinBox.valueChanged.connect(self._model.set_nominal_rocking_angle)
         self._view.precessionAngleSpinBox.valueChanged.connect(self.update)
-        self._view.precessionAngleGroupBox.clicked.connect(self.toggle_precession_angle)
+        self._view.precessionAngleCheckBox.clicked.connect(self.toggle_precession_angle)
         self._view.precessionAngleSpinBox.valueChanged.connect(self.rockingAngleChanged)
 
     def toggle_precession_angle(self):
-        if self._view.precessionAngleGroupBox.isChecked():
+        if self._view.precessionAngleCheckBox.isChecked():
             self._model.set_nominal_rocking_angle(self._view.precessionAngleSpinBox.value())
         else:
             self._model.set_nominal_rocking_angle(nan)
@@ -343,11 +365,11 @@ class ParameterController(QObject):
     def setupPrecessionFrequency(self):
         self._view.precessionFrequencySpinBox.valueChanged.connect(self._model.set_rocking_frequency)
         self._view.precessionFrequencySpinBox.valueChanged.connect(self.update)
-        self._view.precessionFrequencyGroupBox.clicked.connect(self.toggle_precession_frequency)
+        self._view.precessionFrequencyCheckBox.clicked.connect(self.toggle_precession_frequency)
         self._view.precessionFrequencySpinBox.valueChanged.connect(self.rockingFrequencyChanged)
 
     def toggle_precession_frequency(self):
-        if self._view.precessionFrequencyGroupBox.isChecked():
+        if self._view.precessionFrequencyCheckBox.isChecked():
             self._model.set_rocking_frequency(self._view.precessionFrequencySpinBox.value())
         else:
             self._model.set_rocking_frequency(nan)
@@ -357,10 +379,10 @@ class ParameterController(QObject):
     def setupAcquisitionDate(self):
         self._view.acquisitionDate.dateChanged.connect(lambda date: self._model.set_acquisition_date(date.toPyDate()))
         self._view.acquisitionDate.dateChanged.connect(self.update)
-        self._view.acquisitionDateGroupBox.clicked.connect(self.toggle_acquisition_date)
+        self._view.acquisitionDateCheckBox.clicked.connect(self.toggle_acquisition_date)
 
     def toggle_acquisition_date(self):
-        if self._view.acquisitionDateGroupBox.isChecked():
+        if self._view.acquisitionDateCheckBox.isChecked():
             self._model.set_acquisition_date(self._view.acquisitionDate.date().toPyDate())
         else:
             self._model.set_acquisition_date('')
@@ -598,6 +620,8 @@ class mib2hspyController(object):
         # self._view.actionNotes.triggered.connect(lambda: self._notes_view.show())
         self._view.actionAcquisition_parameters.triggered.connect(lambda: self._parameter_controller.show())
 
+        self._view.vbfPushButton.clicked.connect(self.show_vbf)
+
     def setupLogging(self):
         """
         Sets up logging for the GUI
@@ -612,8 +636,9 @@ class mib2hspyController(object):
         Setup the input file signals of the GUI
         :return:
         """
-        self._view.browseInputFileButton.clicked.connect(
-            lambda: self._view.inputFilePathField.setText(self._view.browseInputFile()))
+        #self._view.browseInputFileButton.clicked.connect(
+        #    lambda: self._view.inputFilePathField.setText(self._view.browseInputFile()))
+        self._view.browseInputFileButton.clicked.connect(lambda: self.browse_input_file())
         self._view.loadInputFileButton.clicked.connect(self.load_data)
         self._model.dataLoaded.connect(self.update_view)
         self._model.dataLoaded.connect(self._model.load_hdr)
@@ -625,6 +650,13 @@ class mib2hspyController(object):
         self._model.headerCleared.connect(lambda: self.update_view())
         self._view.clearPushButton.clicked.connect(self.clear)
         self._view.readFileInfoButton.clicked.connect(self.show_file_info)
+
+    def browse_input_file(self):
+        if self._model.filename is None:
+            filename = self._view.browseInputFile()
+        else:
+            filename = self._view.browseInputFile(str(Path(self._model.filename).parent))
+        self._view.inputFilePathField.setText(filename)
 
     def setupCalibrationFileSignals(self):
         self._view.browseCalibrationButton.clicked.connect(
@@ -704,11 +736,17 @@ class mib2hspyController(object):
 
     def get_max_value(self):
         if self._model.data is not None:
-            #self._model.data.compute()
+            # self._model.data.compute()
             max_value = self._model.data.max(axis=[0, 1, 2])
             return int(max_value.data[0])
         else:
             return nan
+
+    def show_vbf(self):
+        signal, chunks = self.prepare_data(update_indicators=False)
+        self.generate_vbf(signal, save=False)
+        del signal
+
     def calibrate(self):
         """
         Sets the calibrated values of the acquisition parameters
@@ -760,7 +798,7 @@ class mib2hspyController(object):
         Set the calibrated value of the scan step in y-direction
         :return:
         """
-        self._parameter_controller.get_model().scan_step_x.set_value(self.get_y_scan_calibration())
+        self._parameter_controller.get_model().scan_step_y.set_value(self.get_y_scan_calibration())
         self._parameter_controller.update()
 
     def calibrate_condenser_aperture(self):
@@ -968,6 +1006,7 @@ class mib2hspyController(object):
     def clear(self):
         logging.getLogger().info('Clearing data and metadata')
         self._model.clear_data()
+        self.reset_indicators()
         self._view.dwelltimeSpinBox.setValue(0.0)
         self._view.rotationSpinBox.setValue(0.0)
         self._view.stepsXSpinBox.setValue(0)
@@ -1051,8 +1090,17 @@ class mib2hspyController(object):
         worker.signals.result.connect(self.worker_result)
         return worker
 
+    def reset_indicators(self):
+        self._view.fileStatusIndicator.setNone()
+        self._view.headerStatusIndicator.setNone()
+        self._view.reshapedIndicator.setNone()
+        self._view.downsampledIndicator.setNone()
+        self._view.rechunkedIndicator.setNone()
+        self._view.writtenIndicator.setNone()
+
     def load_data(self):
         """Start a worker to load a signal"""
+        self.reset_indicators()
         self._view.fileStatusIndicator.setBusy()
         worker = self.worker_wrapper(self._model.load_file, filename=self._view.inputFilePathField.text())
         worker.signals.error.connect(lambda e: self._view.fileStatusIndicator.setInactive())
@@ -1066,7 +1114,7 @@ class mib2hspyController(object):
         worker = self.worker_wrapper(self.convert_data)
         self._view.threadpool.start(worker)
 
-    def reshape_data(self, data_array, nx, ny, dx, dy):
+    def reshape_data(self, data_array, nx, ny, dx, dy, update_indicator=True):
         """
         Return a reshaped data array
 
@@ -1084,20 +1132,24 @@ class mib2hspyController(object):
         :rtype: array-like
         """
         logging.getLogger().info('Reshaping data to shape ({nx}, {ny} | {dx}, {dy})'.format(nx=nx, ny=ny, dx=dx, dy=dy))
-        self._view.reshapedIndicator.setBusy()
+        if update_indicator:
+            self._view.reshapedIndicator.setBusy()
         if nx > 0 and ny > 0:
             logging.getLogger().info('Treating data as image stack when reshaping')
             shape = (nx, ny, dx, dy)
         else:
             logging.getLogger().info('Treating data as single image when reshaping')
             shape = (dx, dy)
+            if update_indicator:
+                self._view.reshapedIndicator.setInactive()
         logging.getLogger().info('Using data shape {}'.format(shape))
         data_array = data_array.reshape(shape)
-        self._view.reshapedIndicator.setActive()
+        if update_indicator:
+            self._view.reshapedIndicator.setActive()
         logging.getLogger().info('Reshaped data')
         return data_array
 
-    def downsample_data(self, data_array, bitdepth):
+    def downsample_data(self, data_array, bitdepth, update_indicator=True):
         """
         Change the data type of a data array
 
@@ -1108,37 +1160,44 @@ class mib2hspyController(object):
         :return: data_array
         :rtype: array-like
         """
-        self._view.downsampledIndicator.setBusy()
+        if update_indicator:
+            self._view.downsampledIndicator.setBusy()
         if bitdepth == 'None':
-            self._view.downsampledIndicator.setInactive()
+            if update_indicator:
+                self._view.downsampledIndicator.setInactive()
             logging.getLogger().info('Did not downsample data')
         else:
             data_array = data_array.astype(bitdepth)
-            self._view.downsampledIndicator.setActive()
+            if update_indicator:
+                self._view.downsampledIndicator.setActive()
             logging.getLogger().info('Downsapled data to {}'.format(bitdepth))
         return data_array
 
-    def rechunk_data(self, data_array, chunksize):
+    def rechunk_data(self, data_array, chunksize, update_indicator=True):
         """
         Change the chunking of a dask array
         :param data_array: The data array to rechunk
         :param chunksize: The chunksize to use
         :type data_array: array-like
         :type chunksize: int
-        :return: The rechunked data array
+        :return: data_array, chunks. The rechunked data array and the chunks used
         :rtype: array-like
         """
-        self._view.rechunkedIndicator.setBusy()
+        if update_indicator:
+            self._view.rechunkedIndicator.setBusy()
         if chunksize != 'None':
-            chunks = [int(chunksize)] * len(data_array.shape)
+            chunks = tuple([int(chunksize)] * len(data_array.shape))
             logging.getLogger().info('Rechunking data to {} chunks'.format(chunks))
             data_array = data_array.rechunk(chunks)
-            self._view.rechunkedIndicator.setActive()
+            if update_indicator:
+                self._view.rechunkedIndicator.setActive()
             logging.getLogger().info('Rechunked data')
         else:
             logging.getLogger().info('Did not rechunk data')
-            self._view.rechunkedIndicator.setInactive()
-        return data_array
+            chunks = None
+            if update_indicator:
+                self._view.rechunkedIndicator.setInactive()
+        return data_array, chunks
 
     def generate_metadata(self):
         """
@@ -1173,10 +1232,64 @@ class mib2hspyController(object):
         logging.getLogger().info('Generated metadata:\n{metadata}'.format(metadata=metadata))
         return metadata
 
-    def convert_data(self):
+    def generate_vbf(self, signal, figsize=(6, 6), x_offset=0.01, y_offset=0.01, fraction=1 / 5, color='w',
+                     scalebarwidth=0.01, save=True):
         """
-        Convert the data, and save it as a signal.
+        Generate a VBF image
+
+        :param signal: The signal to use
+        :param figsize: The size of the resulting figure in inches
+        :param x_offset: Offset of scalebar in x-direction in fraction of axis size
+        :param y_offset: Offset of scalebar in y-direction in fraction of axis size
+        :param fraction: Length of scalebar in fraction of axis size.
+        :param color: Color of scalebar
+        :param scalebarwidth: Width of scalebar in fraction of axis size
+        :type signal: hyperspy.signals.BaseSignal
+        :type figsize: tuple
+        :type x_offset: float
+        :type y_offset: float
+        :type fraction: float
+        :type color: str
+        :type scalebarwidth: float
         :return:
+        """
+        logging.getLogger().info('Generating VBF image')
+        cx = self._view.vbfCxSpinBox.value()
+        cy = self._view.vbfCySpinBox.value()
+        width = self._view.vbfWidthSpinBox.value()
+        logging.getLogger().info('VBF center: ({cx}, {cy}), width: {width}'.format(cx=cx, cy=cy, width=width))
+        # roi = pxm.roi.CircleROI(cx=cx, cy=cy, r=r)
+        # vbf = signal.get_integrated_intensity(roi)
+
+        logging.getLogger().info('Generated VBF image')
+        vbf = signal.isig[cx - width:cx + width + 1, cy - width:cy + width + 1].sum(axis=[2, 3])
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[])
+        ax.imshow(vbf.data)
+        image_width = vbf.axes_manager[0].size * vbf.axes_manager[0].scale
+        units = vbf.axes_manager[0].units
+        d = round(image_width * fraction, ndigits=-1)
+        width = d / image_width
+
+        scalebar = Rectangle(xy=(x_offset, y_offset), facecolor=color, width=width, height=scalebarwidth,
+                             transform=ax.transAxes)
+        ax.add_patch(scalebar)
+        ax.annotate('{d:.0f} {u}'.format(d=d, u=units), xy=(x_offset + width / 2, y_offset + scalebarwidth), color=color,
+                    ha='center', va='bottom', xycoords='axes fraction')
+
+        if save:
+            path = Path(self._view.inputFilePathField.text()).with_suffix('.png')
+            plt.savefig(str(path))
+            logging.getLogger().info('Saved VBF image to {}'.format(path))
+            plt.close('all')
+        else:
+            plt.show()
+
+    def prepare_data(self, update_indicators=True):
+        """
+        Prepare the data
+        :return: signal, chunks. The prepared signal and the chunks used to rechunk it.
+
         """
         if self._model.data is None:
             raise TypeError()
@@ -1192,9 +1305,9 @@ class mib2hspyController(object):
             logging.getLogger().info('Treating {self._model.data} as image stack'.format(self=self))
             data_array = self._model.data.data
 
-        data_array = self.reshape_data(data_array, nx, ny, dx, dy)
-        data_array = self.downsample_data(data_array, self._view.bitDepthSelector.currentText())
-        data_array = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText())
+        data_array = self.reshape_data(data_array, nx, ny, dx, dy, update_indicator=update_indicators)
+        data_array = self.downsample_data(data_array, self._view.bitDepthSelector.currentText(), update_indicator=update_indicators)
+        data_array, chunks = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText(), update_indicator=update_indicators)
 
         logging.getLogger().info('Creating signal from converted data')
         signal = pxm.LazyElectronDiffraction2D(data_array)
@@ -1202,12 +1315,28 @@ class mib2hspyController(object):
 
         signal.original_metadata.add_dictionary(self.generate_metadata())
 
+        return signal, chunks
+
+    def convert_data(self):
+        """
+        Convert the data, and save it as a signal.
+        :return:
+        """
+        signal, chunks = self.prepare_data()
+
         logging.getLogger().info('Writing data')
         self._view.writtenIndicator.setBusy()
-        signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()),
-                    overwrite=self._view.overwriteCheckBox.isChecked())
+        if chunks is not None:
+            signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()), chunks=chunks,
+                        overwrite=self._view.overwriteCheckBox.isChecked())
+        else:
+            signal.save(self._model.filename.with_suffix(self._view.fileFormatSelector.currentText()),
+                        overwrite=self._view.overwriteCheckBox.isChecked())
         self._view.writtenIndicator.setActive()
         logging.getLogger().info('Wrote data')
+
+        if self._view.vbfGroupBox.isChecked():
+            self.generate_vbf(signal)
         del signal
 
 

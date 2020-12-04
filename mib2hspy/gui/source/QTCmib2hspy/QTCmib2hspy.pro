@@ -24,4 +24,6 @@ FORMS += \
     mainwindow.ui \
     noteswindow.ui \
     parameterswindow.ui \
-    settingsdialog.ui
+    settingsdialog.ui \
+    supportingdatawindow.ui \
+    calibratewindow.ui
