@@ -65,7 +65,8 @@ class Calibration(object):
 
 
 class MicroscopeCalibration(Calibration):
-    def __init__(self, *args, scale=None, acceleration_voltage=None, mode=None, mag_mode=None, alpha=None, spot=None, spot_size=None, camera=None, microscope=None):
+    def __init__(self, *args, scale=None, acceleration_voltage=None, mode=None, mag_mode=None, alpha=None, spot=None,
+                 spot_size=None, camera=None, microscope=None):
         """
         Create a microscope calibration.
         :param args: Positional arguments passed to Calibration().
@@ -293,7 +294,7 @@ class Scale(object):
         return '{self.scale:{f}}'.format(self=self, f=format_spec)
 
     def __str__(self):
-        return '{self.__class__.__name__} {self.name}={self:.2f} {self.units}'.format(self=self)
+        return '{self.__class__.__name__} {self.name}={self:.3g} {self.units}'.format(self=self)
 
     def __float__(self):
         return float(self.scale)
@@ -486,6 +487,35 @@ class DiffractionScale(Scale):
     def calculate_cameralength(self, acceleration_voltage, pixel_size):
         return pixel_size / tan(float(self.to_rad(acceleration_voltage)))
 
+
+class CalibrationList(object):
+    def __init__(self, *args):
+        self.calibrations = []
+        for arg in args:
+            if isinstance(arg, Calibration):
+                self.calibrations.append(arg)
+
+    def __repr__(self):
+        return '{self.__class__.__name__}({s})'.format(self=self, s=', '.join(['{calibration!r}'.format(calibration=calibration) for calibration in self.calibrations]))
+
+    def __iter__(self):
+        for calibration in self.calibrations:
+            yield calibration
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self.calibrations[item]
+        else:
+            return NotImplemented
+
+    def __setitem__(self, key, value):
+        if isinstance(key, int):
+            if isinstance(value, Calibration):
+                self.calibrations[key] = value
+            else:
+                raise TypeError()
+        else:
+            raise TypeError()
 
 def wavelength(V, m0=9.1093837015 * 1e-31, e=1.60217662 * 1e-19, h=6.62607004 * 1e-34, c=299792458):
     """
