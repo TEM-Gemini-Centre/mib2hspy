@@ -1,6 +1,6 @@
 import pandas as pd
 import datetime as dt
-from math import nan, sqrt, pi
+from math import nan, sqrt, pi, atan, tan
 
 
 class Calibration(object):
@@ -16,7 +16,7 @@ class Calibration(object):
         :type actual_value: float
         :type units: str
         :type name: str
-        :tupe date: str
+        :type date: str
         """
         self.nominal_value = float(nominal_value)
         self.actual_value = float(actual_value)
@@ -35,6 +35,11 @@ class Calibration(object):
         return '{self.__class__.__name__} {self.name} ({self.date!s}):\n\t{self:.2f} {self.units}'.format(self=self)
 
     def as_dataframe(self):
+        """
+        Return the calibration as a dataframe.
+        :return: dataframe with calibration data
+        :rtype: pandas.DataFrame
+        """
         return pd.DataFrame([self.nominal_value, self.actual_value, self.date],
                             columns=['Nominal {self.name} ({self.units})'.format(self=self),
                                      '{self.name} ({self.units})'.format(self=self), 'Date'])
@@ -60,26 +65,50 @@ class Calibration(object):
 
 
 class MicroscopeCalibration(Calibration):
-    default_parameters = {
-        'Acceleration_voltage': None,
-        'Mode': None,
-        'Mag_mode': None,
-        'Alpha': None,
-        'Spot': None,
-        'Spot_size': None,
-        'Camera': None,
-        'Microscope': None,
-    }
-
-    def __init__(self, *args, scale=None, **kwargs):
+    def __init__(self, *args, scale=None, acceleration_voltage=None, mode=None, mag_mode=None, alpha=None, spot=None, spot_size=None, camera=None, microscope=None):
+        """
+        Create a microscope calibration.
+        :param args: Positional arguments passed to Calibration().
+        :param scale: The scale of the calibrated image.
+        :param acceleration_voltage: The acceleration voltage of the microscope. Default is None.
+        :param mode: The mode of the microscope. Default is None.
+        :param mag_mode: The magnification mode of the microscope. Default is None.
+        :param alpha: The alpha-setting of the microscope. Default is None.
+        :param spot: The spot-setting of the microscope. Default is None.
+        :param spot_size: The nominal spot-size of the microscope. Default is None.
+        :param camera: The name of the camera to calibrate. Default is None.
+        :param microscope: The name of the microscope. Default is None.
+        :type scale: Scale
+        :type acceleration_voltage: float
+        :type mode: str
+        :type mag_mode: str
+        :type alpha: str
+        :type alpha: int
+        :type alpha: float
+        :type spot: str
+        :type spot: int
+        :type spot: float
+        :type spot_size: str
+        :type spot_size: int
+        :type spot_size: float
+        :type camera: str
+        :type microscope: str
+        """
         super().__init__(*args)
         if scale is not None:
             if not isinstance(scale, Scale):
                 raise TypeError(
                     'Scale must be either None or Scale, not {scale!r} of type {t}'.format(scale=scale, t=type(scale)))
         self.scale = scale
-        self.parameters = self.default_parameters.copy()
-        self.parameters.update(**kwargs)
+        self.parameters = {'Acceleration_voltage': acceleration_voltage,
+                           'Mode': mode,
+                           'Mag_mode': mag_mode,
+                           'Alpha': alpha,
+                           'Spot': spot,
+                           'Spot_size': spot_size,
+                           'Camera': camera,
+                           'Microscope': microscope
+                           }
 
     def __repr__(self):
         return '{self.__class__.__name__}({self.nominal_value!r}, {self.actual_value!r}, {self.units!r}, {self.name!r}, {self.date!r}, {self.scale!r}, {parameters}'.format(
@@ -87,13 +116,25 @@ class MicroscopeCalibration(Calibration):
                 ['{key}={value}'.format(key=key, value=self.parameters[key]) for key in self.parameters]))
 
     def as_dataframe(self):
+        """
+        Return a dataframe with the microscope calibration values and parameters.
+        :return: dataframe with nominal and actual values, along with relevant parameters
+        :rtype: pandas.DataFrame
+        """
         if self.scale is None:
             return pd.DataFrame([[self.nominal_value, self.actual_value, self.date] + list(self.parameters.values())],
                                 columns=['Nominal {self.name} ({self.units})'.format(self=self),
                                          '{self.name} ({self.units})'.format(self=self), 'Date'] + list(
                                     self.parameters.keys()))
         elif isinstance(self.scale, DiffractionScale):
-            return pd.DataFrame([[self.nominal_value, self.actual_value, float(self.scale), float(self.scale_mrad), float(self.scale_deg), self.date] + list(self.parameters.values())],columns=['Nominal {self.name} ({self.units})'.format(self=self),'{self.name} ({self.units})'.format(self=self),'{self.scale.name} ({self.scale.units})'.format(self=self), '{self.scale_mrad.name} ({self.scale_mrad.units})'.format(self=self), '{self.scale_deg.name} ({self.scale_deg.units})'.format(self=self), 'Date'] + list(self.parameters.keys()))
+            return pd.DataFrame([[self.nominal_value, self.actual_value, float(self.scale), float(self.scale_mrad),
+                                  float(self.scale_deg), self.date] + list(self.parameters.values())],
+                                columns=['Nominal {self.name} ({self.units})'.format(self=self),
+                                         '{self.name} ({self.units})'.format(self=self),
+                                         '{self.scale.name} ({self.scale.units})'.format(self=self),
+                                         '{self.scale_mrad.name} ({self.scale_mrad.units})'.format(self=self),
+                                         '{self.scale_deg.name} ({self.scale_deg.units})'.format(self=self),
+                                         'Date'] + list(self.parameters.keys()))
         else:
             return pd.DataFrame([[self.nominal_value, self.actual_value, float(self.scale), self.date] + list(
                 self.parameters.values())],
@@ -105,6 +146,20 @@ class MicroscopeCalibration(Calibration):
 
 class Magnification(MicroscopeCalibration):
     def __init__(self, nominal_mag, actual_mag, date, scale=None, **kwargs):
+        """
+        Create a magnification calibration.
+        :param nominal_mag: The nominal magnification
+        :param actual_mag: The actual magnification
+        :param date: The date of the calibration acquisition in the format "yyyy-mm-dd"
+        :param scale: The scale of the image
+        :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope parameters such as high tension.
+        :type nominal_mag: int
+        :type nominal_mag: float
+        :type actual_mag: int
+        :type actual_mag: float
+        :type date: str
+        :type scale: Scale
+        """
         if scale is None:
             scale = ImageScale(nan)
         else:
@@ -117,6 +172,21 @@ class Magnification(MicroscopeCalibration):
 
 class Cameralength(MicroscopeCalibration):
     def __init__(self, nominal_cameralength, actual_cameralength, date, units='cm', scale=None, **kwargs):
+        """
+        Create a cameralength calibraton
+        :param nominal_cameralength: The nominal cameralength
+        :param actual_cameralength: The actual cameralength
+        :param date: The date of the calibration acquisition in the format "yyyy-mm-dd"
+        :param units: The units of the cameralength. Default is "cm"
+        :param scale: The scale of the cameralength. Default is None
+        :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope parameters such as high tension.
+        :type nominal_cameralength: float
+        :type nominal_cameralength: int
+        :type actual_cameralength: float
+        :type date: str
+        :type units: str
+        :type scale: Scale
+        """
         if scale is None:
             scale = DiffractionScale(nan)
         elif isinstance(scale, Scale):
@@ -132,6 +202,20 @@ class Cameralength(MicroscopeCalibration):
 
 class StepSize(MicroscopeCalibration):
     def __init__(self, nominal_stepsize, actual_stepsize, date, direction=None, units='nm', **kwargs):
+        """
+        Create a stepsize calibration.
+        :param nominal_stepsize: The nominal stepsize
+        :param actual_stepsize: The actual stepsize
+        :param date: The date of the calibration acquisition in the format "yyyy-mm-dd"
+        :param direction: The direction of the stepsize. Default is None
+        :param units: The units of the stepsize. Default is "nm"
+        :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope properties. Required properties are "Mode" and "Alpha".
+        :type nominal_stepsize: float
+        :type actual_stepsize: float
+        :type date: str
+        :type direction: str
+        :type units: str
+        """
         if direction is None:
             direction = ''
         else:
@@ -150,6 +234,23 @@ class StepSize(MicroscopeCalibration):
 class PrecessionAngle(MicroscopeCalibration):
     def __init__(self, nominal_precession_angle, actual_precession_angle, date, units='deg', amplitude_x=nan,
                  amplitude_y=nan, **kwargs):
+        """
+        Create a precession angle calibration
+        :param nominal_precession_angle: The nominal precession angle in degrees
+        :param actual_precession_angle: The actual precession angle in degrees
+        :param date: The date of the calibration acquisition in the format "yyyy-mm-dd".
+        :param units: The units of the precession angle. Default is "deg"
+        :param amplitude_x: The deflector amplitude in x as %. Default is nan
+        :param amplitude_y: The deflector amplitude in y as %. Default is nan
+        :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope properties. Required properties are "Mode" and "Alpha".
+        :type nominal_precession_angle: float
+        :type actual_precession_angle: float
+        :type date: str
+        :type units: str
+        :type units: str
+        :type amplitude_y: float
+        :type amplitude_x: float
+        """
         if 'Mode' not in kwargs:
             raise ValueError('Mode must be specified for a step size calibration')
         if 'Alpha' not in kwargs:
@@ -290,9 +391,9 @@ class DiffractionScale(Scale):
         elif self.units == '1/nm':
             new_scale = 10 * self.scale * wavelength(acceleration_voltage)
         elif self.units == 'Å':
-            new_scale = 1/self.scale * wavelength(acceleration_voltage)
+            new_scale = 1 / self.scale * wavelength(acceleration_voltage)
         elif self.units == 'nm':
-            new_scale = 10 * 1/self.scale*wavelength(acceleration_voltage)
+            new_scale = 10 * 1 / self.scale * wavelength(acceleration_voltage)
         elif self.units == 'deg':
             new_scale = self.scale * pi / 180
         elif self.units == 'mrad':
@@ -362,25 +463,29 @@ class DiffractionScale(Scale):
 
     def to_nm(self, acceleration_voltage, inplace=False):
         new_scale = self.to_inv_nm(acceleration_voltage)
-        new_scale.scale = 1/new_scale.scale
-        new_scale.units='nm'
+        new_scale.scale = 1 / new_scale.scale
+        new_scale.units = 'nm'
         if inplace:
-            self.scale=new_scale.scale
-            self.units=new_scale.units
+            self.scale = new_scale.scale
+            self.units = new_scale.units
             return self
         else:
             return new_scale
 
     def to_angstroms(self, acceleration_voltage, inplace=False):
         new_scale = self.to_inv_angstroms(acceleration_voltage)
-        new_scale.scale = 1/new_scale.scale
+        new_scale.scale = 1 / new_scale.scale
         new_scale.units = 'Å'
         if inplace:
-            self.scale=new_scale.scale
-            self.units=new_scale.units
+            self.scale = new_scale.scale
+            self.units = new_scale.units
             return self
         else:
             return new_scale
+
+    def calculate_cameralength(self, acceleration_voltage, pixel_size):
+        return pixel_size / tan(float(self.to_rad(acceleration_voltage)))
+
 
 def wavelength(V, m0=9.1093837015 * 1e-31, e=1.60217662 * 1e-19, h=6.62607004 * 1e-34, c=299792458):
     """
