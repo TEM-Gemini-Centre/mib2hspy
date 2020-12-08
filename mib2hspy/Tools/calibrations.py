@@ -12,8 +12,8 @@ class Calibration(object):
         :param units: The units of the values
         :param name: The name of the calibration/measure
         :param date: The date of the calibration in the format "yyyy-mm-dd"
-        :type nominal_value: float
-        :type actual_value: float
+        :type nominal_value: Union[int, float]
+        :type actual_value: Union[int, float]
         :type units: str
         :type name: str
         :type date: str
@@ -80,18 +80,12 @@ class MicroscopeCalibration(Calibration):
         :param camera: The name of the camera to calibrate. Default is None.
         :param microscope: The name of the microscope. Default is None.
         :type scale: Scale
-        :type acceleration_voltage: float
+        :type acceleration_voltage: Union[int, float]
         :type mode: str
         :type mag_mode: str
-        :type alpha: str
-        :type alpha: int
-        :type alpha: float
-        :type spot: str
-        :type spot: int
-        :type spot: float
-        :type spot_size: str
-        :type spot_size: int
-        :type spot_size: float
+        :type alpha: Union[int, float, str]
+        :type spot: Union[int, float, str]
+        :type spot_size: Union[int, float, str]
         :type camera: str
         :type microscope: str
         """
@@ -154,12 +148,10 @@ class Magnification(MicroscopeCalibration):
         :param date: The date of the calibration acquisition in the format "yyyy-mm-dd"
         :param scale: The scale of the image
         :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope parameters such as high tension.
-        :type nominal_mag: int
-        :type nominal_mag: float
-        :type actual_mag: int
-        :type actual_mag: float
+        :type nominal_mag: Union[int, float]
+        :type actual_mag: Union[int, float]
         :type date: str
-        :type scale: Scale
+        :type scale: Union[int, float, Scale]
         """
         if scale is None:
             scale = ImageScale(nan)
@@ -181,18 +173,20 @@ class Cameralength(MicroscopeCalibration):
         :param units: The units of the cameralength. Default is "cm"
         :param scale: The scale of the cameralength. Default is None
         :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope parameters such as high tension.
-        :type nominal_cameralength: float
-        :type nominal_cameralength: int
+        :type nominal_cameralength: Union[int, float]
         :type actual_cameralength: float
         :type date: str
         :type units: str
-        :type scale: Scale
+        :type scale: Union[int, float, Scale]
         """
         if scale is None:
             scale = DiffractionScale(nan)
+        elif isinstance(scale, (int, float)):
+            scale = DiffractionScale(scale)
         elif isinstance(scale, Scale):
             scale = DiffractionScale(scale)
         super().__init__(nominal_cameralength, actual_cameralength, units, 'Cameralength', date, scale=scale, **kwargs)
+        self.scale = DiffractionScale(self.scale)
         self.scale_deg = self.scale.to_deg(self.parameters['Acceleration_voltage'])
         self.scale_rad = self.scale.to_rad(self.parameters['Acceleration_voltage'])
         self.scale_mrad = self.scale.to_mrad(self.parameters['Acceleration_voltage'])
@@ -247,7 +241,6 @@ class PrecessionAngle(MicroscopeCalibration):
         :type nominal_precession_angle: float
         :type actual_precession_angle: float
         :type date: str
-        :type units: str
         :type units: str
         :type amplitude_y: float
         :type amplitude_x: float
@@ -366,6 +359,11 @@ class Scale(object):
 
 class ImageScale(Scale):
     def __init__(self, scale):
+        """
+        Create an image scale
+        :param scale: The scale of the image
+        :type scale: Union[int, float, Scale]
+        """
         if isinstance(scale, Scale):
             units = scale.units
             scale = scale.scale
@@ -376,6 +374,11 @@ class ImageScale(Scale):
 
 class DiffractionScale(Scale):
     def __init__(self, scale):
+        """
+        Create a diffraction scale
+        :param scale: The scale of the diffraction pattern
+        :type scale: Union[int, float, Scale]
+        """
         if isinstance(scale, Scale):
             units = scale.units
             scale = scale.scale
@@ -495,6 +498,37 @@ class CalibrationList(object):
             if isinstance(arg, Calibration):
                 self.calibrations.append(arg)
 
+    @property
+    def dataframe(self):
+        df = pd.DataFrame()
+        for calibration in self:
+            df = calibration.add_to_dataframe(df, remove_duplicates=False)
+        return df
+
+    def __add__(self, other):
+        if not isinstance(other, Calibration):
+            raise TypeError('Only calibration objects can be added to a calibration list')
+        return self.calibrations + [other]
+
+    def __iadd__(self, other):
+        if not isinstance(other, Calibration):
+            raise TypeError('Only calibration objects can be added to a calibration list')
+        self.calibrations += [other]
+        return self
+
+    def __sub__(self, other):
+        if not isinstance(other, Calibration):
+            raise TypeError('Only calibration objects can be added to a calibration list')
+        l = self.calibrations.copy()
+        [l.remove(other) for i in range(l.count(other))]
+        return l
+
+    def __isub__(self, other):
+        if not isinstance(other, Calibration):
+            raise TypeError('Only calibration objects can be added to a calibration list')
+        [self.calibrations.remove(other) for i in range(self.calibrations.count(other))]
+        return self
+
     def __repr__(self):
         return '{self.__class__.__name__}({s})'.format(self=self, s=', '.join(['{calibration!r}'.format(calibration=calibration) for calibration in self.calibrations]))
 
@@ -505,6 +539,11 @@ class CalibrationList(object):
     def __getitem__(self, item):
         if isinstance(item, int):
             return self.calibrations[item]
+        elif isinstance(item, str):
+            return self.dataframe.query(item)
+            #try:
+
+            #return self.dataframe[item]
         else:
             return NotImplemented
 
