@@ -1,7 +1,6 @@
 import pandas as pd
 import datetime as dt
-from math import nan, sqrt, pi, atan, tan
-
+from math import nan, sqrt, pi, atan, tan, isnan
 
 class Calibration(object):
     def __init__(self, nominal_value, actual_value, units, name, date):
@@ -40,7 +39,7 @@ class Calibration(object):
         :return: dataframe with calibration data
         :rtype: pandas.DataFrame
         """
-        return pd.DataFrame([self.nominal_value, self.actual_value, self.date],
+        return pd.DataFrame([[self.nominal_value, self.actual_value, self.date]],
                             columns=['Nominal {self.name} ({self.units})'.format(self=self),
                                      '{self.name} ({self.units})'.format(self=self), 'Date'])
 
@@ -110,33 +109,22 @@ class MicroscopeCalibration(Calibration):
             self=self, parameters=', '.join(
                 ['{key}={value}'.format(key=key, value=self.parameters[key]) for key in self.parameters]))
 
-    def as_dataframe(self):
+    def as_dataframe(self, ignore_nans=True):
         """
         Return a dataframe with the microscope calibration values and parameters.
+        :param ignore_nans: Whether to ignore parameters with nan values or not. Default is True
+        :type ignore_nans: bool
         :return: dataframe with nominal and actual values, along with relevant parameters
         :rtype: pandas.DataFrame
         """
-        if self.scale is None:
-            return pd.DataFrame([[self.nominal_value, self.actual_value, self.date] + list(self.parameters.values())],
-                                columns=['Nominal {self.name} ({self.units})'.format(self=self),
-                                         '{self.name} ({self.units})'.format(self=self), 'Date'] + list(
-                                    self.parameters.keys()))
-        elif isinstance(self.scale, DiffractionScale):
-            return pd.DataFrame([[self.nominal_value, self.actual_value, float(self.scale), float(self.scale_mrad),
-                                  float(self.scale_deg), self.date] + list(self.parameters.values())],
-                                columns=['Nominal {self.name} ({self.units})'.format(self=self),
-                                         '{self.name} ({self.units})'.format(self=self),
-                                         '{self.scale.name} ({self.scale.units})'.format(self=self),
-                                         '{self.scale_mrad.name} ({self.scale_mrad.units})'.format(self=self),
-                                         '{self.scale_deg.name} ({self.scale_deg.units})'.format(self=self),
-                                         'Date'] + list(self.parameters.keys()))
-        else:
-            return pd.DataFrame([[self.nominal_value, self.actual_value, float(self.scale), self.date] + list(
-                self.parameters.values())],
-                                columns=['Nominal {self.name} ({self.units})'.format(self=self),
-                                         '{self.name} ({self.units})'.format(self=self),
-                                         '{self.scale.name} ({self.scale.units})'.format(self=self), 'Date'] + list(
-                                    self.parameters.keys()))
+        df = super().as_dataframe()
+        for key in self.parameters:
+            value = self.parameters[key]
+            if not isinstance(value, str):
+                if value is not None:
+                    if not isnan(value):
+                        df[key] = value
+        return df
 
 
 class Magnification(MicroscopeCalibration):
@@ -194,9 +182,15 @@ class Cameralength(MicroscopeCalibration):
     def __str__(self):
         return '{self.name} {self:.3g} {self.units}'.format(self=self)
 
+    def as_dataframe(self):
+        df = super().as_dataframe()
+        df['{self.scale_mrad.name} ({self.scale_mrad.units})'.format(self=self)] = [float(self.scale_mrad)]
+        df['{self.scale_deg.name} ({self.scale_deg.units})'.format(self=self)] = [float(self.scale_deg)]
+        return df
+
 
 class StepSize(MicroscopeCalibration):
-    def __init__(self, nominal_stepsize, actual_stepsize, date, direction=None, units='nm', **kwargs):
+    def __init__(self, nominal_stepsize, actual_stepsize, date, amplitude=nan, direction=None, units='nm', **kwargs):
         """
         Create a stepsize calibration.
         :param nominal_stepsize: The nominal stepsize
@@ -215,54 +209,106 @@ class StepSize(MicroscopeCalibration):
             direction = ''
         else:
             direction = ' ' + direction
-        if 'Mode' not in kwargs:
-            raise ValueError('Mode must be specified for a step size calibration')
-        if 'Alpha' not in kwargs:
-            raise ValueError('Alpha must be specified for a step size calibration')
+        if 'mode' not in kwargs:
+            raise ValueError('`mode` must be specified for a step size calibration')
+        if 'alpha' not in kwargs:
+            raise ValueError('`alpha` must be specified for a step size calibration')
         super().__init__(nominal_stepsize, actual_stepsize, units, 'Step{direction}'.format(direction=direction), date,
                          **kwargs)
+        self.direction = direction
+        self.amplitude = float(amplitude)
+
+    def __repr__(self):
+        return '{self.__class__.__name__}(self.nominal_stepsize!r}, {self.actual_stepsize!r}, {self.date!r}, ' \
+               'amplitude={self.amplitude!r}, direction={self.direction!r}, units={self.units!r}, ' \
+               '{parameters}'.format(self=self, parameters=', '.join(['{key}={value}'.format(key=key,
+                                                                                             value=self.parameters[
+                                                                                                 key]) for key in
+                                                                      self.parameters]))
 
     def __str__(self):
         return '{self.name} {self:.3g} {self.units}'.format(self=self)
 
 
 class PrecessionAngle(MicroscopeCalibration):
-    def __init__(self, nominal_precession_angle, actual_precession_angle, date, units='deg', amplitude_x=nan,
-                 amplitude_y=nan, **kwargs):
+    default_deflectors = {'Upper_1': {'X': {'A': nan, 'P': nan}, 'Y': {'A': nan, 'P': nan}},
+                          'Upper_2': {'X': {'A': nan, 'P': nan}, 'Y': {'A': nan, 'P': nan}},
+                          'Lower_1': {'X': {'A': nan, 'P': nan}, 'Y': {'A': nan, 'P': nan}},
+                          'Lower_2': {'X': {'A': nan, 'P': nan}, 'Y': {'A': nan, 'P': nan}}}
+
+    def __init__(self, nominal_precession_angle, actual_precession_angle, precession_excitation, date, units='deg',
+                 deflectors={}, **kwargs):
         """
         Create a precession angle calibration
         :param nominal_precession_angle: The nominal precession angle in degrees
         :param actual_precession_angle: The actual precession angle in degrees
         :param date: The date of the calibration acquisition in the format "yyyy-mm-dd".
         :param units: The units of the precession angle. Default is "deg"
-        :param amplitude_x: The deflector amplitude in x as %. Default is nan
-        :param amplitude_y: The deflector amplitude in y as %. Default is nan
+        :param precession_excitation: The excitation of the precession system in %.
+        :param deflectors: The deflector amplitudes and phases. Default is {'Upper_1':{'X':{'A':nan,'P':nan},'Y':{'A':nan,'P':nan}}, 'Upper_2':{'X':{'A':nan,'P':nan},'Y':{'A':nan,'P':nan}}, 'Lower_1':{'X':{'A':nan,'P':nan},'Y':{'A':nan,'P':nan}}, 'Lower_2':{'X':{'A':nan,'P':nan},'Y':{'A':nan,'P':nan}}
         :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope properties. Required properties are "Mode" and "Alpha".
         :type nominal_precession_angle: float
         :type actual_precession_angle: float
         :type date: str
         :type units: str
-        :type amplitude_y: float
-        :type amplitude_x: float
+        :type precession_excitation: float
+        :type deflectors: Union[dict, list]
         """
-        if 'Mode' not in kwargs:
-            raise ValueError('Mode must be specified for a step size calibration')
-        if 'Alpha' not in kwargs:
-            raise ValueError('Alpha must be specified for a step size calibration')
+        if 'mode' not in kwargs:
+            raise ValueError('`mode` must be specified for a precession angle calibration')
+        if 'alpha' not in kwargs:
+            raise ValueError('`alpha` must be specified for a precession angle calibration')
 
         super().__init__(nominal_precession_angle, actual_precession_angle, units, 'Precession Angle', date, **kwargs)
-        self.amplitudes = (amplitude_x, amplitude_y)
+        self.precession_excitation = precession_excitation
 
-    @property
-    def amp_x(self):
-        return self.amplitudes[0]
+        if isinstance(deflectors, dict):
+            self.deflectors = [Deflector(deflectors.get('Upper_1', {}).get('X', {}).get('A', nan), 'Upper 1 X',
+                                         phase=deflectors.get('Upper_1', {}).get('X', {}).get('P', nan)),
+                               Deflector(deflectors.get('Upper_1', {}).get('Y', {}).get('A', nan), 'Upper 1 Y',
+                                         phase=deflectors.get('Upper_1', {}).get('Y', {}).get('P', nan)),
+                               Deflector(deflectors.get('Upper_2', {}).get('X', {}).get('A', nan), 'Upper 2 X',
+                                         phase=deflectors.get('Upper_2', {}).get('X', {}).get('P', nan)),
+                               Deflector(deflectors.get('Upper_2', {}).get('Y', {}).get('A', nan), 'Upper 2 Y',
+                                         phase=deflectors.get('Upper_2', {}).get('Y', {}).get('P', nan)),
+                               Deflector(deflectors.get('Lower_1', {}).get('X', {}).get('A', nan), 'Lower 1 X',
+                                         phase=deflectors.get('Lower_1', {}).get('X', {}).get('P', nan)),
+                               Deflector(deflectors.get('Lower_1', {}).get('Y', {}).get('A', nan), 'Lower 1 Y',
+                                         phase=deflectors.get('Lower_1', {}).get('Y', {}).get('P', nan)),
+                               Deflector(deflectors.get('Lower_2', {}).get('X', {}).get('A', nan), 'Lower 2 X',
+                                         phase=deflectors.get('Lower_2', {}).get('X', {}).get('P', nan)),
+                               Deflector(deflectors.get('Lower_2', {}).get('Y', {}).get('A', nan), 'Lower 2 Y',
+                                         phase=deflectors.get('Lower_2', {}).get('Y', {}).get('P', nan))
+                               ]
+        elif isinstance(deflectors, list):
+            if not all([isinstance(deflector, Deflector) for deflector in deflectors]):
+                raise TypeError('Objects in {deflectors} must be of type Deflector'.format(deflectors=deflectors))
+            self.deflectors = deflectors
+        else:
+            raise TypeError(
+                'Deflectors must be given as a dictionary or as a list. Not {deflectors} of type {t}'.format(
+                    deflectors=deflectors, t=type(deflectors)))
 
-    @property
-    def amp_y(self):
-        return self.amplitudes[1]
+    def __repr__(self):
+        return '{self.__class__.__name__}({self.nominal_value_angle!r}, {self.actual_value_angle!r}, {self.precession_excitation!r}, {self.date!r}, {self.units!r}, {self.deflectors!r}, {parameters}'.format(
+            self=self, parameters=', '.join(
+                ['{key}={value!r}'.format(key=key, value=self.parameters[key]) for key in self.parameters]))
 
     def __str__(self):
-        return '{self.name} {self:.2f} {self.units} ({self.amp_x:.2f}%, {self.amp_y:.2f}%)'.format(self=self)
+        return '{self.name} {self:.2f} {self.units}\n\t{deflectors}'.format(self=self, deflectors='\n\t'.join(
+            [str(deflector) for deflector in self.deflectors]))
+
+    def as_dataframe(self, ignore_nans=True):
+        """
+        Return alignment as a dataframe
+        :return:
+        """
+        df = super().as_dataframe()
+        df['Precession excitation (%)'] = self.precession_excitation
+        for deflector in self.deflectors:
+            if deflector.no_nans():
+                deflector.add_to_dataframe(df)
+        return df
 
 
 class Scale(object):
@@ -497,7 +543,6 @@ class CalibrationList(object):
         for arg in args:
             if isinstance(arg, Calibration):
                 self.calibrations.append(arg)
-
     @property
     def dataframe(self):
         df = pd.DataFrame()
@@ -530,31 +575,80 @@ class CalibrationList(object):
         return self
 
     def __repr__(self):
-        return '{self.__class__.__name__}({s})'.format(self=self, s=', '.join(['{calibration!r}'.format(calibration=calibration) for calibration in self.calibrations]))
+        return '{self.__class__.__name__}({s})'.format(self=self, s=', '.join(
+            ['{calibration!r}'.format(calibration=calibration) for calibration in self.calibrations]))
 
     def __iter__(self):
         for calibration in self.calibrations:
             yield calibration
 
     def __getitem__(self, item):
-        if isinstance(item, int):
+        if isinstance(item, (int, slice)):
             return self.calibrations[item]
         elif isinstance(item, str):
-            return self.dataframe.query(item)
-            #try:
-
-            #return self.dataframe[item]
+            df = self.dataframe
+            if item in df.columns:
+                return df[item]
+            else:
+                return df.query(item)
         else:
-            return NotImplemented
+            raise TypeError(
+                'Cannot use {item} for getting items in {self}. Only types int, slice, and str are supported, not {t}'.format(
+                    item=item, self=self, t=type(item)))
 
     def __setitem__(self, key, value):
-        if isinstance(key, int):
+        if isinstance(key, (int, slice)):
             if isinstance(value, Calibration):
                 self.calibrations[key] = value
             else:
-                raise TypeError()
+                raise TypeError(
+                    'Cannot add object {value} to {self}. Only Calibration objects may be added.'.format(value=value,
+                                                                                                         self=self))
         else:
-            raise TypeError()
+            raise TypeError(
+                'Cannot set item {value} at {key} in {self}, keys must either be int or slice obejcts'.format(
+                    value=value, key=key, self=self))
+
+class Deflector(object):
+    def __init__(self, amplitude, name, phase=nan):
+        self.amplitude = float(amplitude)
+        self.phase = float(phase)
+        self.name = name
+
+    def __repr__(self):
+        return '{self.__class__.__name__}({self.amplitude!r}, {self.name!r}, phase={self.phase!r})'.format(self=self)
+
+    def __format__(self, format_spec):
+        return 'Amplitude: {self.amplitude:{f}} %, Phase: {self.phase:{f}} deg'.format(self=self, f=format_spec)
+
+    def __str__(self):
+        return '{self.__class__.__name__} {self.name}: {self:.2g}'.format(self=self)
+
+    def no_nans(self):
+        return not (isnan(self.amplitude) or isnan(self.phase))
+
+    def get_formatted_name(self):
+        return '{self.__class__.__name__} {self.name}'.format(self=self)
+
+    def get_column_values(self):
+        return [self.amplitude, self.phase]
+
+    def get_column_names(self):
+        return ['{name} Amplitude (%)'.format(name=self.get_formatted_name()),
+                '{name} Phase (deg)'.format(name=self.get_formatted_name())]
+
+    def as_dataframe(self):
+        return pd.DataFrame([self.get_column_values()],
+                            columns=self.get_column_names())
+
+    def add_to_dataframe(self, dataframe):
+        for name, value in zip(self.get_column_names(), self.get_column_values()):
+            try:
+                dataframe[name] = [value]
+            except Exception as e:
+                print(name, value)
+                raise e
+
 
 def wavelength(V, m0=9.1093837015 * 1e-31, e=1.60217662 * 1e-19, h=6.62607004 * 1e-34, c=299792458):
     """
