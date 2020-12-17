@@ -45,14 +45,14 @@ class LogStream(object):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
-        uic.loadUi('./source/QTCmib2hspy/mainwindow.ui', self)
+        uic.loadUi(str(Path(__file__).parent / './source/QTCmib2hspy/mainwindow.ui'), self)
         self.setWindowTitle('mib2hspy converter')
         self.threadpool = QThreadPool()
         self._settings = {}
 
         self.read_settings()
 
-    def read_settings(self, settings_file_name='settings.txt'):
+    def read_settings(self, settings_file_name=str(Path(__file__).parent / 'settings.txt')):
         """
         Read gui settings from a settings file.
         :param settings_file_name: Path to settings file
@@ -70,7 +70,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     self._settings.update({key: value})
 
-    def write_settings(self, settings_file_name='settings.txt'):
+    def write_settings(self, settings_file_name=str(Path(__file__).parent / 'settings.txt')):
         """
         Write settings to a settings file.
         :param settings_file_name: Path to settings file
@@ -157,7 +157,7 @@ class NotesWindow(QtWidgets.QMainWindow):
         super(NotesWindow, self).__init__(*args, **kwargs)
 
         # Load ui file
-        uic.loadUi('./source/QTCmib2hspy/noteswindow.ui', self)
+        uic.loadUi(str(Path(__file__).parent / 'source/QTCmib2hspy/noteswindow.ui'), self)
         self.setWindowTitle('Notes')
         self.storeButton.clicked.connect(self.setNotes)
         self.textEdit.textChanged.connect(self.refresh)
@@ -427,7 +427,7 @@ class ParametersWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super(ParametersWindow, self).__init__(*args, **kwargs)
 
-        uic.loadUi('./source/QTCmib2hspy/parameterswindow.ui', self)
+        uic.loadUi(str(Path(__file__).parent / 'source/QTCmib2hspy/parameterswindow.ui'), self)
 
     #     self.model = Microscope()
     #
@@ -636,7 +636,7 @@ class mib2hspyController(object):
         Setup the input file signals of the GUI
         :return:
         """
-        #self._view.browseInputFileButton.clicked.connect(
+        # self._view.browseInputFileButton.clicked.connect(
         #    lambda: self._view.inputFilePathField.setText(self._view.browseInputFile()))
         self._view.browseInputFileButton.clicked.connect(lambda: self.browse_input_file())
         self._view.loadInputFileButton.clicked.connect(self.load_data)
@@ -1274,7 +1274,8 @@ class mib2hspyController(object):
         scalebar = Rectangle(xy=(x_offset, y_offset), facecolor=color, width=width, height=scalebarwidth,
                              transform=ax.transAxes)
         ax.add_patch(scalebar)
-        ax.annotate('{d:.0f} {u}'.format(d=d, u=units), xy=(x_offset + width / 2, y_offset + scalebarwidth), color=color,
+        ax.annotate('{d:.0f} {u}'.format(d=d, u=units), xy=(x_offset + width / 2, y_offset + scalebarwidth),
+                    color=color,
                     ha='center', va='bottom', xycoords='axes fraction')
 
         if save:
@@ -1306,8 +1307,10 @@ class mib2hspyController(object):
             data_array = self._model.data.data
 
         data_array = self.reshape_data(data_array, nx, ny, dx, dy, update_indicator=update_indicators)
-        data_array = self.downsample_data(data_array, self._view.bitDepthSelector.currentText(), update_indicator=update_indicators)
-        data_array, chunks = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText(), update_indicator=update_indicators)
+        data_array = self.downsample_data(data_array, self._view.bitDepthSelector.currentText(),
+                                          update_indicator=update_indicators)
+        data_array, chunks = self.rechunk_data(data_array, self._view.rechunkComboBox.currentText(),
+                                               update_indicator=update_indicators)
 
         logging.getLogger().info('Creating signal from converted data')
         signal = pxm.LazyElectronDiffraction2D(data_array)
@@ -1344,6 +1347,10 @@ class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent):
         super(SettingsDialog, self).__init__(parent)
         uic.loadUi('./source/QTCmib2hspy/settingsdialog.ui', self)
+
+
+def run_gui():
+    main('debug.log')
 
 
 def main(logfile=None):
