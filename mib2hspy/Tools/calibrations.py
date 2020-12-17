@@ -1,9 +1,11 @@
 import pandas as pd
 import datetime as dt
+import re
 from math import nan, sqrt, pi, atan, tan, isnan
 
+
 class Calibration(object):
-    def __init__(self, nominal_value, actual_value, units, name, date):
+    def __init__(self, nominal_value, actual_value, units, name, date, label=None):
         """
         Create a calibration object
         :param nominal_value: The nominal value
@@ -11,20 +13,28 @@ class Calibration(object):
         :param units: The units of the values
         :param name: The name of the calibration/measure
         :param date: The date of the calibration in the format "yyyy-mm-dd"
+        :param label: A label to use for the calibration. Default is None
         :type nominal_value: Union[int, float]
         :type actual_value: Union[int, float]
         :type units: str
         :type name: str
-        :type date: str
+        :type date: Union[str. datetime.date, datetime.datetime]
         """
+        if nominal_value is None:
+            nominal_value = nan
+        if actual_value is None:
+            actual_value = nan
         self.nominal_value = float(nominal_value)
         self.actual_value = float(actual_value)
         self.units = str(units)
         self.name = str(name)
+        if isinstance(date, (dt.date, dt.datetime)):
+            date = date.strftime('%Y-%m-%d')
         self.date = dt.datetime.strptime(date, '%Y-%m-%d').date()
+        self.label = label
 
     def __repr__(self):
-        return '{self.__class__.__name__}({self.nominal_value!r}, {self.actual_value!r}, {self.units!r}, {self.name!r}, {self.date!r})'.format(
+        return '{self.__class__.__name__}({self.nominal_value!r}, {self.actual_value!r}, {self.units!r}, {self.name!r}, {self.date!r}, label={self.label!r})'.format(
             self=self)
 
     def __format__(self, format_spec):
@@ -39,9 +49,14 @@ class Calibration(object):
         :return: dataframe with calibration data
         :rtype: pandas.DataFrame
         """
-        return pd.DataFrame([[self.nominal_value, self.actual_value, self.date]],
-                            columns=['Nominal {self.name} ({self.units})'.format(self=self),
-                                     '{self.name} ({self.units})'.format(self=self), 'Date'])
+        if self.label is not None:
+            return pd.DataFrame([[self.label, self.nominal_value, self.actual_value, self.date]],
+                                columns=['Label', 'Nominal {self.name} ({self.units})'.format(self=self),
+                                         '{self.name} ({self.units})'.format(self=self), 'Date'])
+        else:
+            return pd.DataFrame([[self.nominal_value, self.actual_value, self.date]],
+                                columns=['Nominal {self.name} ({self.units})'.format(self=self),
+                                         '{self.name} ({self.units})'.format(self=self), 'Date'])
 
     def add_to_dataframe(self, dataframe, remove_duplicates=True):
         """
@@ -65,7 +80,7 @@ class Calibration(object):
 
 class MicroscopeCalibration(Calibration):
     def __init__(self, *args, scale=None, acceleration_voltage=None, mode=None, mag_mode=None, alpha=None, spot=None,
-                 spot_size=None, camera=None, microscope=None):
+                 spot_size=None, camera=None, microscope=None, **kwargs):
         """
         Create a microscope calibration.
         :param args: Positional arguments passed to Calibration().
@@ -78,6 +93,7 @@ class MicroscopeCalibration(Calibration):
         :param spot_size: The nominal spot-size of the microscope. Default is None.
         :param camera: The name of the camera to calibrate. Default is None.
         :param microscope: The name of the microscope. Default is None.
+        :param kwargs: Optional keyword arguments passed to Calibration()
         :type scale: Scale
         :type acceleration_voltage: Union[int, float]
         :type mode: str
@@ -88,7 +104,7 @@ class MicroscopeCalibration(Calibration):
         :type camera: str
         :type microscope: str
         """
-        super().__init__(*args)
+        super().__init__(*args, **kwargs)
         if scale is not None:
             if not isinstance(scale, Scale):
                 raise TypeError(
@@ -120,10 +136,16 @@ class MicroscopeCalibration(Calibration):
         df = super().as_dataframe()
         for key in self.parameters:
             value = self.parameters[key]
-            if not isinstance(value, str):
-                if value is not None:
+            if value is None:
+                pass
+            elif isinstance(value, str):
+                df[key] = value
+            else:
+                if ignore_nans:
                     if not isnan(value):
                         df[key] = value
+                else:
+                    df[key] = value
         return df
 
 
@@ -145,7 +167,7 @@ class Magnification(MicroscopeCalibration):
             scale = ImageScale(nan)
         else:
             scale = ImageScale(scale)
-        super().__init__(nominal_mag, actual_mag, '', 'Magnification', date, scale=scale, **kwargs)
+        super().__init__(nominal_mag, actual_mag, '', 'Magnification', date, scale=scale, label='IMG', **kwargs)
 
     def __str__(self):
         return '{self.name} {self:.0f}'.format(self=self)
@@ -173,7 +195,8 @@ class Cameralength(MicroscopeCalibration):
             scale = DiffractionScale(scale)
         elif isinstance(scale, Scale):
             scale = DiffractionScale(scale)
-        super().__init__(nominal_cameralength, actual_cameralength, units, 'Cameralength', date, scale=scale, **kwargs)
+        super().__init__(nominal_cameralength, actual_cameralength, units, 'Cameralength', date, scale=scale,
+                         label='DIFF', **kwargs)
         self.scale = DiffractionScale(self.scale)
         self.scale_deg = self.scale.to_deg(self.parameters['Acceleration_voltage'])
         self.scale_rad = self.scale.to_rad(self.parameters['Acceleration_voltage'])
@@ -214,8 +237,10 @@ class StepSize(MicroscopeCalibration):
         if 'alpha' not in kwargs:
             raise ValueError('`alpha` must be specified for a step size calibration')
         super().__init__(nominal_stepsize, actual_stepsize, units, 'Step{direction}'.format(direction=direction), date,
-                         **kwargs)
+                         label='STEP', **kwargs)
         self.direction = direction
+        if amplitude is None:
+            amplitude = nan
         self.amplitude = float(amplitude)
 
     def __repr__(self):
@@ -259,7 +284,8 @@ class PrecessionAngle(MicroscopeCalibration):
         if 'alpha' not in kwargs:
             raise ValueError('`alpha` must be specified for a precession angle calibration')
 
-        super().__init__(nominal_precession_angle, actual_precession_angle, units, 'Precession Angle', date, **kwargs)
+        super().__init__(nominal_precession_angle, actual_precession_angle, units, 'Precession Angle', date,
+                         label='PREC', **kwargs)
         self.precession_excitation = precession_excitation
 
         if isinstance(deflectors, dict):
@@ -306,7 +332,10 @@ class PrecessionAngle(MicroscopeCalibration):
         df = super().as_dataframe()
         df['Precession excitation (%)'] = self.precession_excitation
         for deflector in self.deflectors:
-            if deflector.no_nans():
+            if ignore_nans:
+                if deflector.no_nans():
+                    deflector.add_to_dataframe(df)
+            else:
                 deflector.add_to_dataframe(df)
         return df
 
@@ -543,6 +572,7 @@ class CalibrationList(object):
         for arg in args:
             if isinstance(arg, Calibration):
                 self.calibrations.append(arg)
+
     @property
     def dataframe(self):
         df = pd.DataFrame()
@@ -609,8 +639,13 @@ class CalibrationList(object):
                 'Cannot set item {value} at {key} in {self}, keys must either be int or slice obejcts'.format(
                     value=value, key=key, self=self))
 
+
 class Deflector(object):
     def __init__(self, amplitude, name, phase=nan):
+        if amplitude is None:
+            amplitude = nan
+        if phase is None:
+            phase = nan
         self.amplitude = float(amplitude)
         self.phase = float(phase)
         self.name = name
@@ -669,3 +704,120 @@ def wavelength(V, m0=9.1093837015 * 1e-31, e=1.60217662 * 1e-19, h=6.62607004 * 
     """
 
     return h / sqrt(2 * m0 * e * V * (1.0 + (e * V / (2 * m0 * c ** 2)))) * 1E10
+
+
+def generate_from_dataframe(dataframe):
+    """
+    Create calibration objects from a dataframe.
+    :param dataframe: The dataframe containing calibration data.
+    :type dataframe: pandas.DataFrame
+    :return: The generated calibration data.
+    :rtype: CalibrationList
+    """
+
+    if not isinstance(dataframe, pd.DataFrame):
+        raise TypeError()
+
+    calibrations = CalibrationList()
+    for index, row in dataframe.iterrows():
+        label = row.get('Label')
+        mode = row.get('Mode')
+        alpha = row.get('Alpha')
+        mag_mode = row.get('Mag_mode')
+        spot = row.get('Spot')
+        spot_size = row.get('Spotsize')
+        camera = row.get('camera')
+        microscope = row.get('Microscope')
+        date = row.get('Date')
+        if label == 'IMG':
+            nominal_value = row.get('Nominal Magnification ()')
+            actual_value = row.get('Magnification')
+            scale = row.get('Scale (nm)')
+            calibration = Magnification(nominal_value, actual_value, date, scale=scale, mode=mode, alpha=alpha,
+                                        mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
+                                        microscope=microscope)
+            calibrations += calibration
+        elif label == 'DIFF':
+            nominal_value = row.get('Nominal Cameralength (cm)')
+            actual_value = row.get('Cameralength (cm)')
+            scale = row.get('Scale (1/Å)')
+            calibration = Cameralength(nominal_value, actual_value, date, scale=scale, mode=mode, alpha=alpha,
+                                       mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
+                                       microscope=microscope)
+            calibrations += calibration
+        elif label == 'STEP':
+            nominal_step = row.get('Nominal Step (nm)')
+            nominal_step_x = row.get('Nominal Step X (nm)')
+            nominal_step_y = row.get('Nominal Step Y (nm)')
+
+            if nominal_step is not None:
+                direction = ''
+            elif nominal_step_x is not None:
+                direction = 'X'
+                nominal_step = nominal_step_x
+            elif nominal_step_y is not None:
+                direction = 'Y'
+                nominal_step = nominal_step_y
+            else:
+                direction = ''
+            step = row.get('Step {direction} (nm)'.format(direction=direction))
+
+            calibration = StepSize(nominal_step, step, date, direction=direction, mode=mode, alpha=alpha,
+                                   mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
+                                   microscope=microscope)
+            calibrations += calibration
+        elif label == 'PREC':
+            nominal_value = row.get('Nominal Precession Angle (deg)')
+            actual_value = row.get('Precession Angle (deg)')
+            excitation = row.get('Precession excitation (%)')
+            deflectors = {
+                'Upper_1': {
+                    'X': {
+                        'A': row.get('Deflector Upper 1 X Amplitude (%)'),
+                        'P': row.get('Deflector Upper 1 X Phase (deg)'),
+                    },
+                    'Y': {
+                        'A': row.get('Deflector Upper 1 Y Amplitude (%)'),
+                        'P': row.get('Deflector Upper 1 Y Phase (deg)'),
+                    }
+                },
+                'Upper_2': {
+                    'X': {
+                        'A': row.get('Deflector Upper 2 X Amplitude (%)'),
+                        'P': row.get('Deflector Upper 2 X Phase (deg)'),
+                    },
+                    'Y': {
+                        'A': row.get('Deflector Upper 2 Y Amplitude (%)'),
+                        'P': row.get('Deflector Upper 2 Y Phase (deg)'),
+                    }
+                },
+                'Lower_1': {
+                    'X': {
+                        'A': row.get('Deflector Lower 1 X Amplitude (%)'),
+                        'P': row.get('Deflector Lower 1 X Phase (deg)'),
+                    },
+                    'Y': {
+                        'A': row.get('Deflector Lower 1 Y Amplitude (%)'),
+                        'P': row.get('Deflector Lower 1 Y Phase (deg)'),
+                    }
+                },
+                'Lower_2': {
+                    'X': {
+                        'A': row.get('Deflector Lower 2 X Amplitude (%)'),
+                        'P': row.get('Deflector Lower 2 X Phase (deg)'),
+                    },
+                    'Y': {
+                        'A': row.get('Deflector Lower 2 Y Amplitude (%)'),
+                        'P': row.get('Deflector Lower 2 Y Phase (deg)'),
+                    }
+                },
+
+            }
+            calibration = PrecessionAngle(nominal_value, actual_value, excitation, date, mode=mode, alpha=alpha,
+                                          mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
+                                          microscope=microscope, deflectors=deflectors)
+            calibrations += calibration
+        else:
+            print('Did not recognize label {label}. Cannot generate calibration object.'.format(label=label))
+
+    return calibrations
