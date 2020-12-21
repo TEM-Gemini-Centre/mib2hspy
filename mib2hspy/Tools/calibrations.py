@@ -79,6 +79,11 @@ class Calibration(object):
 
 
 class MicroscopeCalibration(Calibration):
+    _pixel_sizes = {
+        'Merlin': 55E-6,
+        'US1000': 14E-6
+    }
+
     def __init__(self, *args, scale=None, acceleration_voltage=None, mode=None, mag_mode=None, alpha=None, spot=None,
                  spot_size=None, camera=None, microscope=None, **kwargs):
         """
@@ -119,11 +124,23 @@ class MicroscopeCalibration(Calibration):
                            'Camera': camera,
                            'Microscope': microscope
                            }
+        self.pixel_size = abs(float(self._pixel_sizes.get(self.parameters.get('Camera'), nan)))
 
     def __repr__(self):
         return '{self.__class__.__name__}({self.nominal_value!r}, {self.actual_value!r}, {self.units!r}, {self.name!r}, {self.date!r}, {self.scale!r}, {parameters}'.format(
             self=self, parameters=', '.join(
                 ['{key}={value}'.format(key=key, value=self.parameters[key]) for key in self.parameters]))
+
+    def set_pixel_size(self, pixel_size=None):
+        """
+        Sets the pixel size of the camera.
+        :param pixel_size: The pixel size in meters. Default is None, in which case the default pixel size of the camera will be used if the camera is recognized
+        :return:
+        """
+        if pixel_size is None:
+            self.pixel_size = abs(float(self._pixel_sizes.get(self.parameters.get('Camera', ''), nan)))
+        else:
+            self.pixel_size = abs(float(pixel_size))
 
     def as_dataframe(self, ignore_nans=True):
         """
@@ -173,6 +190,34 @@ class Magnification(MicroscopeCalibration):
     def __str__(self):
         return '{self.name} {self:.0f}'.format(self=self)
 
+    def calibrate_magnification(self):
+        """
+        Calibrate the magnification based on the calibrated scale.
+        :return:
+        """
+
+        magnification = self.pixel_size / self.scale.scale
+        if self.scale.units == 'nm' or self.scale.units == 'nm/px':
+            magnification *= 1E9
+        elif self.scale.units == 'Å' or self.scale.units == 'Å/px':
+            magnification *= 1E10
+        elif self.scale.units == 'um' or self.scale.units == 'µm' or self.scale.units == 'um/px':
+            magnification *= 1E6
+        else:
+            raise ValueError(
+                'Cannot calculate magnification of {self} with scale {self.scale}, could not recognize units {self.scale.units}.'.format(
+                    self=self))
+        self.actual_value = magnification
+
+    def calibrate_scale(self):
+        """
+        Calibrates the scale based on the magnification.
+        :return:
+        """
+        scale = self.pixel_size / self.actual_value * 1E9  # Scale in nm
+        self.scale.scale = scale
+        self.scale.units = 'nm'
+
 
 class Cameralength(MicroscopeCalibration):
     def __init__(self, nominal_cameralength, actual_cameralength, date, units='cm', scale=None, **kwargs):
@@ -199,6 +244,8 @@ class Cameralength(MicroscopeCalibration):
         super().__init__(nominal_cameralength, actual_cameralength, units, 'Cameralength', date, scale=scale,
                          label='DIFF', **kwargs)
         self.scale = DiffractionScale(self.scale)
+        self.scale.to_inv_angstroms(self.parameters['Acceleration Voltage (V)'], inplace=True)
+        self.scale_nm = self.scale.to_inv_nm(self.parameters['Acceleration Voltage (V)'])
         self.scale_deg = self.scale.to_deg(self.parameters['Acceleration Voltage (V)'])
         self.scale_rad = self.scale.to_rad(self.parameters['Acceleration Voltage (V)'])
         self.scale_mrad = self.scale.to_mrad(self.parameters['Acceleration Voltage (V)'])
@@ -208,6 +255,7 @@ class Cameralength(MicroscopeCalibration):
 
     def as_dataframe(self):
         df = super().as_dataframe()
+        df['{self.scale_nm.name} ({self.scale_nm.units})'.format(self=self)] = [float(self.scale_nm)]
         df['{self.scale_mrad.name} ({self.scale_mrad.units})'.format(self=self)] = [float(self.scale_mrad)]
         df['{self.scale_deg.name} ({self.scale_deg.units})'.format(self=self)] = [float(self.scale_deg)]
         return df
@@ -217,7 +265,7 @@ class Cameralength(MicroscopeCalibration):
         Calibrate the cameralength based on the parameters of the calibration.
         :return:
         """
-        acceleration_voltage = float(self.parameters['Acceleration_voltage'])
+        acceleration_voltage = float(self.parameters['Acceleration Voltage (V)'])
         camera = str(self.parameters['Camera'])
         if camera is not None:
             if 'Merlin' in camera:
@@ -250,7 +298,7 @@ class Cameralength(MicroscopeCalibration):
         Calculates the correct scale for the calibration given values set by the parameters in the object
         :return:
         """
-        acceleration_voltage = float(self.parameters['Acceleration_voltage'])
+        acceleration_voltage = float(self.parameters['Acceleration Voltage (V)'])
         camera = str(self.parameters['Camera'])
         if 'Merlin' in camera:
             pixel_size = 55
@@ -410,7 +458,8 @@ class Spotsize(MicroscopeCalibration):
         :type units: str
         :type scale: Union[int, float, Scale]
         """
-        super().__init__(kwargs.get('spot_size', None), actual_spotsize, units, 'Spotsize', date, label='SPOT', **kwargs)
+        super().__init__(kwargs.get('spot_size', None), actual_spotsize, units, 'Spotsize', date, label='SPOT',
+                         **kwargs)
 
     def __str__(self):
         return '{self.name} {self:.3g} {self.units}'.format(self=self)
@@ -544,7 +593,7 @@ class DiffractionScale(Scale):
         if self.units == '1/Å':
             new_scale = self.scale * wavelength(acceleration_voltage)
         elif self.units == '1/nm':
-            new_scale = 10 * self.scale * wavelength(acceleration_voltage)
+            new_scale = self.scale / 10 * wavelength(acceleration_voltage)
         elif self.units == 'Å':
             new_scale = 1 / self.scale * wavelength(acceleration_voltage)
         elif self.units == 'nm':
@@ -561,7 +610,7 @@ class DiffractionScale(Scale):
                 new_scale.units = 'rad'
                 return new_scale
         else:
-            raise ValueError('Units of {self} cannot be converted to rad')
+            raise ValueError('Units of {self} cannot be converted to rad'.format(self=self))
 
         if inplace:
             self.scale = new_scale
@@ -901,15 +950,113 @@ def generate_from_dataframe(dataframe):
         elif label == 'SPOT':
             nominal_value = row.get('Nominal Spotsize (nm)')
             actual_value = row.get('Spotsize (nm)')
-            calibration = Spotsize(nominal_value, actual_value, date, acceleration_voltage=acc_voltage, mode=mode, alpha=alpha, mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera, microscope=microscope)
+            calibration = Spotsize(nominal_value, actual_value, date, acceleration_voltage=acc_voltage, mode=mode,
+                                   alpha=alpha, mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
+                                   microscope=microscope)
             calibrations += calibration
         else:
             print('Did not recognize label {label}. Cannot generate calibration object.'.format(label=label))
 
     return calibrations
 
-def make_calibration_from_GMS(signal):
-    pass
 
-def make_calibration_from_hyperspy(signal):
-    pass
+def get_calibration_from_GMS(signal):
+    """
+    Get calibration data from a hyperspy signal with GMS-like metadata and attach a label.
+
+    Parameters
+    ----------
+    signal: an image with GMS metadata.
+    label: str. A string to use as label for the calibration.
+
+    Returns
+    -------
+    calibrations: a pandas dataframe with calibrations and relevant metadata
+    """
+
+    scale_x, scale_y = signal.axes_manager['x'].scale, signal.axes_manager['y'].scale
+    units_x, units_y = signal.axes_manager['x'].units, signal.axes_manager['y'].units
+
+    date = dt.datetime.strptime(signal.original_metadata.ImageList.TagGroup0.ImageTags.DataBar.Acquisition_Date,
+                                '%d/%m/%Y')
+    microscope = signal.original_metadata.ImageList.TagGroup0.ImageTags.Session_Info.Microscope
+    camera = signal.original_metadata.ImageList.TagGroup0.ImageTags.Acquisition.Device.Name
+
+    if len(microscope) == 0:
+        microscope = None
+    microscope_info = signal.original_metadata.ImageList.TagGroup0.ImageTags.Microscope_Info
+    high_tension = int(microscope_info.Voltage)
+    mode = microscope_info.Illumination_Mode
+    mag_mode = microscope_info.Imaging_Mode
+
+    nominal_mag = round(float(microscope_info.Indicated_Magnification), ndigits=0)
+
+    device_info = signal.original_metadata.ImageList.TagGroup0.ImageTags.Acquisition.Device
+    pixel_size = device_info.CCD.Pixel_Size_um[0]*1E-6
+    if mag_mode == 'DIFF':
+        nominal_mag = nominal_mag / 10  # convert mm to cm
+        calibration = Cameralength(nominal_mag, 1, date.strftime('%Y-%m-%d'), scale=Scale(scale_x, units=units_x),
+                                   acceleration_voltage=high_tension, camera=camera, mode=mode, mag_mode=mag_mode, microscope=microscope)
+        calibration.set_pixel_size(pixel_size)
+        calibration.calibrate_cameralength()
+    else:
+        calibration = Magnification(nominal_mag, 1, date.strftime('%Y-%m-%d'), scale=Scale(scale_x, units=units_x),
+                                    acceleration_voltage=high_tension, camera=camera, mode=mode, mag_mode=mag_mode, microscope=microscope)
+        calibration.set_pixel_size(pixel_size)
+        calibration.calibrate_magnification()
+        # actual_mag = round(float(microscope_info.Actual_Magnification), ndigits=0)
+    return calibration
+
+
+def get_calibration_from_MERLIN(signal, pixel_size=None):
+    """
+    Create a calibration object based on Merlin a Merlin image (not a scan!).
+    :param signal: The signal to extract metadata and scales from
+    :param pixel_size: The physical pixel size of the detector in [m]. Default is None, which will use tabulated values (i.e. unbinned data).
+    :type signal: hyperspy.api.Signals.Signal2D
+    :type pixel_size: Union[NoneType, float]
+    :return: cameralength
+    :rtype: Cameralength
+    """
+    scale_x, scale_y = signal.axes_manager[0].scale, signal.axes_manager[0].scale
+    units_x, units_y = signal.axes_manager[0].units, signal.axes_manager[0].units
+
+    try:
+        date = dt.datetime.fromisoformat(signal.original_metadata.Session.Date).date().strftime('%Y-%m-%d')
+    except AttributeError:
+        date = None
+    microscope = '2100F'
+    camera = 'Merlin'
+
+    if len(microscope) == 0:
+        microscope = None
+    microscope_info = signal.original_metadata.Acquisition_instrument.TEM.as_dictionary()
+    try:
+        high_tension = int(microscope_info.get('acceleration_voltage'))
+    except TypeError:
+        high_tension = microscope_info.get('acceleration_voltage')
+    # mode = microscope_info.get('mode')
+    mag_mode = microscope_info.get('mode')
+    if mag_mode == 'SAEDP':
+        try:
+            nominal_cameralength = round(float(microscope_info.get('nominal_cameralength')), ndigits=0)
+        except TypeError:
+            nominal_cameralength = microscope_info.get('nominal_cameralength')
+        if units_x == '$A^{-1}$':
+            units_x = '1/Å'
+        calibration = Cameralength(nominal_cameralength, 1, date, scale=Scale(scale_x, units_x),
+                                   acceleration_voltage=high_tension, camera=camera, microscope=microscope,
+                                   mag_mode=mag_mode)
+        calibration.set_pixel_size(pixel_size)
+        calibration.calibrate_cameralength()
+    else:
+        try:
+            nominal_magnification = round(float(microscope_info.get('nominal_magnification')), ndigits=0)
+        except TypeError:
+            nominal_magnification = microscope_info.get('nominal_magnification')
+        calibration = Magnification(nominal_magnification, 1, date=date, scale=Scale(scale_x, units_x),
+                                    acceleration_voltage=high_tension, camera=camera, microscope=microscope,
+                                    mag_mode=mag_mode)
+        calibration.set_pixel_size((pixel_size))
+        calibration.calibrate_magnification()
+    return calibration
