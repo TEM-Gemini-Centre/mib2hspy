@@ -869,7 +869,7 @@ class mib2hspyController(object):
     def get_magnification_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
+            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Magnification ()` == {parameters.magnification.nominal_value}".format(
                 parameters=parameters)
             return self.get_calibration('Magnification', query)
         else:

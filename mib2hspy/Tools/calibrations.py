@@ -85,12 +85,12 @@ class MicroscopeCalibration(Calibration):
         Create a microscope calibration.
         :param args: Positional arguments passed to Calibration().
         :param scale: The scale of the calibrated image.
-        :param acceleration_voltage: The acceleration voltage of the microscope. Default is None.
+        :param acceleration_voltage: The acceleration voltage of the microscope in V. Default is None.
         :param mode: The mode of the microscope. Default is None.
         :param mag_mode: The magnification mode of the microscope. Default is None.
         :param alpha: The alpha-setting of the microscope. Default is None.
         :param spot: The spot-setting of the microscope. Default is None.
-        :param spot_size: The nominal spot-size of the microscope. Default is None.
+        :param spot_size: The nominal spot-size of the microscope in nm. Default is None.
         :param camera: The name of the camera to calibrate. Default is None.
         :param microscope: The name of the microscope. Default is None.
         :param kwargs: Optional keyword arguments passed to Calibration()
@@ -110,12 +110,12 @@ class MicroscopeCalibration(Calibration):
                 raise TypeError(
                     'Scale must be either None or Scale, not {scale!r} of type {t}'.format(scale=scale, t=type(scale)))
         self.scale = scale
-        self.parameters = {'Acceleration_voltage': acceleration_voltage,
+        self.parameters = {'Acceleration Voltage (V)': acceleration_voltage,
                            'Mode': mode,
-                           'Mag_mode': mag_mode,
+                           'Mag mode': mag_mode,
                            'Alpha': alpha,
                            'Spot': spot,
-                           'Spot_size': spot_size,
+                           'Nominal Spotsize (nm)': spot_size,
                            'Camera': camera,
                            'Microscope': microscope
                            }
@@ -198,9 +198,9 @@ class Cameralength(MicroscopeCalibration):
         super().__init__(nominal_cameralength, actual_cameralength, units, 'Cameralength', date, scale=scale,
                          label='DIFF', **kwargs)
         self.scale = DiffractionScale(self.scale)
-        self.scale_deg = self.scale.to_deg(self.parameters['Acceleration_voltage'])
-        self.scale_rad = self.scale.to_rad(self.parameters['Acceleration_voltage'])
-        self.scale_mrad = self.scale.to_mrad(self.parameters['Acceleration_voltage'])
+        self.scale_deg = self.scale.to_deg(self.parameters['Acceleration Voltage (V)'])
+        self.scale_rad = self.scale.to_rad(self.parameters['Acceleration Voltage (V)'])
+        self.scale_mrad = self.scale.to_mrad(self.parameters['Acceleration Voltage (V)'])
 
     def __str__(self):
         return '{self.name} {self:.3g} {self.units}'.format(self=self)
@@ -338,6 +338,25 @@ class PrecessionAngle(MicroscopeCalibration):
             else:
                 deflector.add_to_dataframe(df)
         return df
+
+
+class Spotsize(MicroscopeCalibration):
+    def __init__(self, actual_spotsize, date, units='nm', **kwargs):
+        """
+        Create a spotsize calibraton
+        :param actual_spotsize: The actual spotsize
+        :param date: The date of the calibration acquisition in the format "yyyy-mm-dd"
+        :param units: The units of the cameralength. Default is "nm"
+        :param kwargs: Optional keyword arguments passed to MicroscopeCalibration defining microscope parameters such as high tension.
+        :type actual_spotsize: float
+        :type date: str
+        :type units: str
+        :type scale: Union[int, float, Scale]
+        """
+        super().__init__(kwargs.get('spot_size', None), actual_spotsize, units, 'Spotsize', date, label='SPOT', **kwargs)
+
+    def __str__(self):
+        return '{self.name} {self:.3g} {self.units}'.format(self=self)
 
 
 class Scale(object):
@@ -721,19 +740,21 @@ def generate_from_dataframe(dataframe):
     calibrations = CalibrationList()
     for index, row in dataframe.iterrows():
         label = row.get('Label')
+        acc_voltage = row.get('Acceleration Voltage (V)')
         mode = row.get('Mode')
         alpha = row.get('Alpha')
-        mag_mode = row.get('Mag_mode')
+        mag_mode = row.get('Mag mode')
         spot = row.get('Spot')
-        spot_size = row.get('Spotsize')
-        camera = row.get('camera')
+        spot_size = row.get('Spotsize (nm)')
+        camera = row.get('Camera')
         microscope = row.get('Microscope')
         date = row.get('Date')
         if label == 'IMG':
             nominal_value = row.get('Nominal Magnification ()')
             actual_value = row.get('Magnification')
             scale = row.get('Scale (nm)')
-            calibration = Magnification(nominal_value, actual_value, date, scale=scale, mode=mode, alpha=alpha,
+            calibration = Magnification(nominal_value, actual_value, date, scale=scale,
+                                        acceleration_voltage=acc_voltage, mode=mode, alpha=alpha,
                                         mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
                                         microscope=microscope)
             calibrations += calibration
@@ -741,7 +762,8 @@ def generate_from_dataframe(dataframe):
             nominal_value = row.get('Nominal Cameralength (cm)')
             actual_value = row.get('Cameralength (cm)')
             scale = row.get('Scale (1/Å)')
-            calibration = Cameralength(nominal_value, actual_value, date, scale=scale, mode=mode, alpha=alpha,
+            calibration = Cameralength(nominal_value, actual_value, date, scale=scale, acceleration_voltage=acc_voltage,
+                                       mode=mode, alpha=alpha,
                                        mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
                                        microscope=microscope)
             calibrations += calibration
@@ -762,7 +784,8 @@ def generate_from_dataframe(dataframe):
                 direction = ''
             step = row.get('Step {direction} (nm)'.format(direction=direction))
 
-            calibration = StepSize(nominal_step, step, date, direction=direction, mode=mode, alpha=alpha,
+            calibration = StepSize(nominal_step, step, date, direction=direction, acceleration_voltage=acc_voltage,
+                                   mode=mode, alpha=alpha,
                                    mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
                                    microscope=microscope)
             calibrations += calibration
@@ -813,9 +836,15 @@ def generate_from_dataframe(dataframe):
                 },
 
             }
-            calibration = PrecessionAngle(nominal_value, actual_value, excitation, date, mode=mode, alpha=alpha,
+            calibration = PrecessionAngle(nominal_value, actual_value, excitation, date,
+                                          acceleration_voltage=acc_voltage, mode=mode, alpha=alpha,
                                           mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera,
                                           microscope=microscope, deflectors=deflectors)
+            calibrations += calibration
+        elif label == 'SPOT':
+            nominal_value = row.get('Nominal Spotsize (nm)')
+            actual_value = row.get('Spotsize (nm)')
+            calibration = Spotsize(nominal_value, actual_value, date, acceleration_voltage=acc_voltage, mode=mode, alpha=alpha, mag_mode=mag_mode, spot=spot, spot_size=spot_size, camera=camera, microscope=microscope)
             calibrations += calibration
         else:
             print('Did not recognize label {label}. Cannot generate calibration object.'.format(label=label))
