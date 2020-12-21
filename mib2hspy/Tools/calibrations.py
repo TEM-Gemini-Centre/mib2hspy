@@ -134,6 +134,7 @@ class MicroscopeCalibration(Calibration):
         :rtype: pandas.DataFrame
         """
         df = super().as_dataframe()
+        df['{self.scale.name} ({self.scale.units})'.format(self=self)] = self.scale.scale
         for key in self.parameters:
             value = self.parameters[key]
             if value is None:
@@ -210,6 +211,62 @@ class Cameralength(MicroscopeCalibration):
         df['{self.scale_mrad.name} ({self.scale_mrad.units})'.format(self=self)] = [float(self.scale_mrad)]
         df['{self.scale_deg.name} ({self.scale_deg.units})'.format(self=self)] = [float(self.scale_deg)]
         return df
+
+    def calibrate_cameralength(self):
+        """
+        Calibrate the cameralength based on the parameters of the calibration.
+        :return:
+        """
+        acceleration_voltage = float(self.parameters['Acceleration_voltage'])
+        camera = str(self.parameters['Camera'])
+        if camera is not None:
+            if 'Merlin' in camera:
+                pixel_size = 55  # um
+            elif 'US1000' in camera:
+                pixel_size = 14  # um
+            else:
+                raise ValueError(
+                    'No camera recognized for {self}, cannot determine pixel size for cameralength calculations.'.format(
+                        self=self))
+        else:
+            raise ValueError(
+                'No camera set for {self}, cannot determine pixel size for cameralength calculations.'.format(
+                    self=self))
+
+        if acceleration_voltage is not None:
+            if not isnan(acceleration_voltage):
+                cameralength = self.scale.calculate_cameralength(acceleration_voltage,
+                                                                 pixel_size) * 1E-4  # convert to cm
+            else:
+                raise ValueError(
+                    'Acceleration voltage for {self} is nan, cannot caluclate cameralength.'.format(self=self))
+        else:
+            raise ValueError('No Acceleration voltage set for {self}, cannot calculate cameralength.'.format(self=self))
+        self.actual_value = cameralength
+        self.units = 'cm'
+
+    def calibrate_scale(self):
+        """
+        Calculates the correct scale for the calibration given values set by the parameters in the object
+        :return:
+        """
+        acceleration_voltage = float(self.parameters['Acceleration_voltage'])
+        camera = str(self.parameters['Camera'])
+        if 'Merlin' in camera:
+            pixel_size = 55
+        elif 'US1000' in camera:
+            pixel_size = 14
+        else:
+            raise ValueError('Could not recognize camera for {self}, cannot calibrate scale'.format(self=self))
+        if not isnan(acceleration_voltage):
+            scale = (pixel_size * 1E-6) / (self.actual_value * 1E-2) / (wavelength(acceleration_voltage))
+        else:
+            raise ValueError('Could not calculate scale for {self}, acceleration voltage is NaN.'.format(self=self))
+        self.scale.scale = scale
+        self.scale.units = '1/Å'
+        self.scale_deg = self.scale.to_deg(acceleration_voltage)
+        self.scale_rad = self.scale.to_rad(acceleration_voltage)
+        self.scale_mrad = self.scale.to_mrad(acceleration_voltage)
 
 
 class StepSize(MicroscopeCalibration):
@@ -850,3 +907,9 @@ def generate_from_dataframe(dataframe):
             print('Did not recognize label {label}. Cannot generate calibration object.'.format(label=label))
 
     return calibrations
+
+def make_calibration_from_GMS(signal):
+    pass
+
+def make_calibration_from_hyperspy(signal):
+    pass
