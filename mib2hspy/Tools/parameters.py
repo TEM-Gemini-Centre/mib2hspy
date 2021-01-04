@@ -1,15 +1,17 @@
-#from math import nan, isnan
+# from math import nan, isnan
 from datetime import datetime, date
 from tabulate import tabulate
 import pandas as pd
 import numpy as np
 from numpy import nan, isnan
 
+
 class Parameter(object):
     """
     A parameter
     """
     allowed_value_types = (int, float, str, datetime, date)
+
     def __init__(self, parameter_name, value, units):
         """
         Create a parameter
@@ -61,7 +63,9 @@ class Parameter(object):
         :return:
         """
         if not isinstance(newvalue, self.allowed_value_types):
-            raise TypeError('Value {newvalue!r} of type {invalid_type} is not of supported types {self.allowed_value_types}!'.format(newvalue=newvalue, invalid_type=type(newvalue), self=self))
+            raise TypeError(
+                'Value {newvalue!r} of type {invalid_type} is not of supported types {self.allowed_value_types}!'.format(
+                    newvalue=newvalue, invalid_type=type(newvalue), self=self))
         self.value = newvalue
 
     def __str__(self):
@@ -216,7 +220,7 @@ class CalibratedParameter(Parameter):
 
 class Microscope(object):
     def __init__(self,
-                 acceleration_voltage=Parameter('HT', nan, 'V'),
+                 acceleration_voltage=Parameter('Acceleration Voltage', nan, 'V'),
                  mode=Parameter('Mode', 'None', ''),
                  alpha=Parameter('Alpha', nan, ''),
                  mag_mode=Parameter('Magnification Mode', 'None', ''),
@@ -230,7 +234,9 @@ class Microscope(object):
                  rocking_frequency=Parameter('Rocking frequency', nan, 'Hz'),
                  scan_step_x=CalibratedParameter('Step X', nan, 'nm', nan),
                  scan_step_y=CalibratedParameter('Step Y', nan, 'nm', nan),
-                 acquisition_date=Parameter('Acquisition Date', 'None', '')
+                 acquisition_date=Parameter('Acquisition Date', 'None', ''),
+                 camera=Parameter('Camera', 'None', ''),
+                 microscope_name=Parameter('Microscope', 'None', '')
                  ):
         """
         Creates a microscope object.
@@ -264,6 +270,10 @@ class Microscope(object):
         :type scan_step_y: CalibratedParameter
         :param acquisition_date: The date of acquisition
         :type acquisition_date: Parameter
+        :param camera: The name of the camera for the microscope.
+        :type camera: Parameter
+        :param microscope_name: The name of the microscope.
+        :type microscope_name: Parameter
         """
 
         if not isinstance(acceleration_voltage, Parameter):
@@ -294,6 +304,10 @@ class Microscope(object):
             raise TypeError()
         if not isinstance(acquisition_date, Parameter):
             raise TypeError()
+        if not isinstance(camera, Parameter):
+            raise TypeError()
+        if not isinstance(microscope_name, Parameter):
+            raise TypeError()
 
         super(Microscope, self).__init__()
         self.acceleration_voltage = acceleration_voltage
@@ -311,6 +325,8 @@ class Microscope(object):
         self.scan_step_x = scan_step_x
         self.scan_step_y = scan_step_y
         self.acquisition_date = acquisition_date
+        self.camera = camera
+        self.microscope_name = microscope_name
 
     def __str__(self):
         parameter_table = tabulate([[parameter.name, parameter.value, parameter.units,
@@ -335,7 +351,9 @@ class Microscope(object):
             self.condenser_aperture,
             self.spot,
             self.spotsize,
-            self.acquisition_date
+            self.acquisition_date,
+            self.camera,
+            self.microscope_name
         ]
 
         for parameter in parameters:
@@ -549,6 +567,24 @@ class Microscope(object):
         """
         self.acquisition_date.set_value(date)
 
+    def set_camera(self, camera):
+        """
+        Sets the camera name
+        :param camera: The name of the camera
+        :type camera: str
+        :return:
+        """
+        self.camera.set_value(camera)
+
+    def set_microscope_name(self, microscope_name):
+        """
+        Sets the microscope name
+        :param microscope_name: The name of the microscope
+        :type microscope_name: str
+        :return:
+        """
+        self.microscope_name.set_value(microscope_name)
+
     def get_parameters(self):
         """
         Return the parameters of the microscope.
@@ -594,7 +630,9 @@ class Microscope(object):
             self.scan_step_x.value,
             self.scan_step_y.nominal_value,
             self.scan_step_y.value,
-            self.acquisition_date.value
+            self.acquisition_date.value,
+            self.camera.value,
+            self.microscope_name.value
         ]], columns=[
             self.mode.name,
             self.alpha.name,
@@ -616,7 +654,9 @@ class Microscope(object):
             self.scan_step_x.name,
             'Nominal {}'.format(self.scan_step_y.name),
             self.scan_step_y.name,
-            self.acquisition_date.name
+            self.acquisition_date.name,
+            self.camera.name,
+            self.microscope_name.name
         ])
 
     def get_parameters_as_dict(self):
@@ -667,6 +707,7 @@ class Detector(object):
     """
     A detector object
     """
+
     def __init__(self,
                  nx=Parameter('Pixels x', nan, 'px'),
                  ny=Parameter('Pixels y', nan, 'px'),

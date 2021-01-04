@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1294</width>
-    <height>826</height>
+    <height>832</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -192,7 +192,7 @@
          <enum>QTabWidget::North</enum>
         </property>
         <property name="currentIndex">
-         <number>0</number>
+         <number>4</number>
         </property>
         <widget class="QWidget" name="tab">
          <attribute name="title">
@@ -864,6 +864,13 @@
              </widget>
             </item>
            </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="printCalibrationFileButton">
+            <property name="text">
+             <string>Print file</string>
+            </property>
+           </widget>
           </item>
           <item>
            <widget class="QRadioButton" name="useManualCalibrationRadioButton">
@@ -1752,7 +1759,7 @@
      <x>0</x>
      <y>0</y>
      <width>1294</width>
-     <height>22</height>
+     <height>26</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">

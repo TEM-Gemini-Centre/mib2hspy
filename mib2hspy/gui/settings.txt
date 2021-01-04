@@ -1,4 +1,4 @@
 SETTINGS
 default_data_root:/media/emilc/Data
-default_calibration_file:C:\Users\emilc\Desktop\Calibrations.csv
+default_calibration_file:C:\Users\emilc\OneDrive - NTNU\NORTEM\Calibrations\2100F\Calibrations.xlsx
 END
