@@ -242,7 +242,6 @@ class ParameterController(QObject):
         self._view.magnificationSpinBox.valueChanged.connect(self.magnificationChanged)
         self._view.magnificationSelector.currentTextChanged.connect(self.magModeChanged)
 
-
     def toggle_magnification(self):
         if self._view.magnificationCheckBox.isChecked():
             self._model.set_nominal_magnification(self._view.magnificationSpinBox.value())
@@ -271,7 +270,8 @@ class ParameterController(QObject):
         self.update()
 
     def setupAccelerationVoltage(self):
-        self._view.highTensionSpinBox.valueChanged.connect(lambda x: self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value()))
+        self._view.highTensionSpinBox.valueChanged.connect(
+            lambda x: self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value()))
         self._view.highTensionSpinBox.valueChanged.connect(self.update)
         self._view.highTensionCheckBox.clicked.connect(self.toggle_acceleration_voltage)
         self._view.highTensionSpinBox.valueChanged.connect(self.accelerationVoltageChanged)
@@ -341,7 +341,7 @@ class ParameterController(QObject):
         self._view.spotSizeSpinBox.valueChanged.connect(self.spotSizeChanged)
         if self._view.spotSizeCheckBox.isChecked():
             self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
-            
+
     def toggle_spot_size(self):
         if self._view.spotSizeCheckBox.isChecked():
             self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
@@ -466,9 +466,10 @@ class ParameterController(QObject):
             self._model.set_camera('')
         self.cameraChanged.emit()
         self.update()
-    
+
     def setupMicroscopeName(self):
-        self._view.microscopeComboBox.currentTextChanged.connect(lambda text: self._model.set_microscope_name(str(text)))
+        self._view.microscopeComboBox.currentTextChanged.connect(
+            lambda text: self._model.set_microscope_name(str(text)))
         self._view.microscopeComboBox.currentTextChanged.connect(self.update)
         self._view.microscopeComboBox.currentTextChanged.connect(self.microscopeNameChanged)
         self._view.microscopeCheckBox.clicked.connect(self.toggle_microscope)
@@ -745,7 +746,7 @@ class mib2hspyController(object):
         self._model.calibrationLoaded.connect(lambda: self._view.calibrationStatusIndicator.setActive())
         self._model.calibrationCleared.connect(lambda: self._view.calibrationStatusIndicator.setInactive())
 
-        #self._parameter_controller.magModeChanged.connect(self.calibrate)
+        # self._parameter_controller.magModeChanged.connect(self.calibrate)
         self._parameter_controller.modeChanged.connect(self.calibrate)
         self._parameter_controller.alphaChanged.connect(self.calibrate)
         self._parameter_controller.accelerationVoltageChanged.connect(self.calibrate)
@@ -773,7 +774,6 @@ class mib2hspyController(object):
         self._view.spotSizeSpinBox.valueChanged.connect(self.calibrate_spotsize)
         self._view.cameraLengthSpinBox.valueChanged.connect(self.calibrate_cameralength)
         self._view.magnificationSpinBox.valueChanged.connect(self.calibrate_magnification)
-
 
         self._view.printCalibrationFileButton.clicked.connect(lambda: print(self._model.calibrationfile))
 
@@ -924,7 +924,8 @@ class mib2hspyController(object):
         """
         if base_query is None:
             parameters = self._parameter_controller.get_model()
-            base_query = "`Acceleration Voltage (V)` == {parameters.acceleration_voltage.value} & `Camera`== '{parameters.camera.value}' & `Microscope`== '{parameters.microscope_name.value}'".format(parameters=parameters)
+            base_query = "`Acceleration Voltage (V)` == {parameters.acceleration_voltage.value} & `Camera`== '{parameters.camera.value}' & `Microscope`== '{parameters.microscope_name.value}'".format(
+                parameters=parameters)
         query = '{base} & {query}'.format(base=base_query, query=query)
 
         if self._model.calibrationfile is None:
@@ -941,8 +942,10 @@ class mib2hspyController(object):
             else:
                 valid_calibration = nan
         finally:
-            logging.getLogger().info('Result from calibration query "{query}"\n\t{name}={result}'.format(query=query, name=name, result=valid_calibration))
-            #logging.getLogger().info(
+            logging.getLogger().info(
+                'Result from calibration query "{query}"\n\t{name}={result}'.format(query=query, name=name,
+                                                                                    result=valid_calibration))
+            # logging.getLogger().info(
             #    'Got "{name}" calibration {calibration}'.format(name=name, calibration=valid_calibration))
             return valid_calibration
 
@@ -1376,6 +1379,57 @@ class mib2hspyController(object):
         else:
             plt.show()
 
+    def set_signal_calibration(self, signal, nx, ny):
+        """
+        Sets the calibration scale of the signal based on calibration values in the GUI
+        :param signal: The signal to set the calibration for
+        :type signal: hyperspy.signals.Signal2D
+        :param nx: The size of the navigation dimension in x
+        :type nx: int
+        :param ny: The size of the navigation dimension in y
+        :type ny: int
+        :return:
+        """
+        if nx <= 1 and ny <= 1:
+            nav_axes = [None, None]
+            sig_axes = [0, 1]
+        elif nx > 1 and ny <= 1:
+            nav_axes = [0, None]
+            sig_axes = [1, 2]
+        elif nx <= 1 and ny > 1:
+            nav_axes = [None, 0]
+            sig_axes = [1, 2]
+        elif nx > 1 and ny > 1:
+            nav_axes = [0, 1]
+            sig_axes = [2, 3]
+        else:
+            nav_axes = [None, None]
+            sig_axes = [None, None]
+
+        if self._view.dataSelector.currentText() == 'Imaging':
+            units = 'nm'
+            scale = self.get_image_scale_calibration()
+        elif self._view.dataSelector.currentText() == 'Diffraction':
+            units = '$A^{-1}$'
+            scale = self.get_diffraction_scale_calibration()
+        else:
+            units = ''
+            scale = 1
+        for ax, name in zip(sig_axes, ('kx', 'ky')):
+            if ax is not None:
+                signal.axes_manager[ax].scale = scale
+                signal.axes_manager[ax].units = units
+                signal.axes_manager[ax].name = name
+
+        if nav_axes[0] is not None:
+            signal.axes_manager[nav_axes[0]].scale = self.get_x_scan_calibration()
+            signal.axes_manager[nav_axes[0]].units = 'nm'
+            signal.axes_manager[nav_axes[0]].name = 'x'
+        if nav_axes[1] is not None:
+            signal.axes_manager[nav_axes[1]].scale = self.get_y_scan_calibration()
+            signal.axes_manager[nav_axes[1]].units = 'nm'
+            signal.axes_manager[nav_axes[1]].name = 'y'
+
     def prepare_data(self, update_indicators=True):
         """
         Prepare the data
@@ -1405,7 +1459,7 @@ class mib2hspyController(object):
         logging.getLogger().info('Creating signal from converted data')
         signal = pxm.LazyElectronDiffraction2D(data_array)
         logging.getLogger().info('Created signal {}'.format(signal))
-
+        self.set_signal_calibration(signal, nx, ny)
         signal.original_metadata.add_dictionary(self.generate_metadata())
 
         return signal, chunks
