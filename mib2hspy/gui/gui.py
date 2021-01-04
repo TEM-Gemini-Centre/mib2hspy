@@ -145,7 +145,7 @@ class MainWindow(QtWidgets.QMainWindow):
             None,
             "Select file",
             str(Path(self._settings['default_calibration_file']).parent),
-            "csv Files (*.csv);;All Files (*)",
+            "csv Files (*.csv);;Excel Files (*xlsx);;All Files (*)",
             options=options)
         return fileName
 
@@ -195,6 +195,8 @@ class ParameterController(QObject):
     rockingFrequencyChanged = pyqtSignal([], [int], [float], [str])
     spotChanged = pyqtSignal([], [int], [float], [str])
     spotSizeChanged = pyqtSignal([], [int], [float], [str])
+    cameraChanged = pyqtSignal([], [str])
+    microscopeNameChanged = pyqtSignal([], [str])
 
     def __init__(self, view, model):
         """
@@ -224,16 +226,22 @@ class ParameterController(QObject):
         self.setupPrecessionFrequency()
         self.setupAcquisitionDate()
         self.setupScanStep()
+        self.setupCamera()
+        self.setupMicroscopeName()
         self.update()
 
     def setupMagnification(self):
+        if self._view.magnificationCheckBox.isChecked():
+            self._model.set_nominal_magnification(self._view.magnificationSpinBox.value())
+            self._model.set_mag_mode(self._view.magnificationSelector.currentText())
         self._view.magnificationSpinBox.valueChanged.connect(self._model.set_nominal_magnification)
         self._view.magnificationSpinBox.valueChanged.connect(lambda v: self.update())
         self._view.magnificationSelector.currentTextChanged.connect(self._model.set_mag_mode)
         self._view.magnificationSelector.currentTextChanged.connect(lambda v: self.update())
         self._view.magnificationCheckBox.clicked.connect(self.toggle_magnification)
         self._view.magnificationSpinBox.valueChanged.connect(self.magnificationChanged)
-        self._view.magnificationSelector.currentIndexChanged.connect(self.magModeChanged)
+        self._view.magnificationSelector.currentTextChanged.connect(self.magModeChanged)
+
 
     def toggle_magnification(self):
         if self._view.magnificationCheckBox.isChecked():
@@ -243,6 +251,7 @@ class ParameterController(QObject):
             self._model.set_nominal_magnification(nan)
             self._model.set_mag_mode('')
         self.magnificationChanged.emit()
+        self.magModeChanged.emit()
         self.update()
 
     def setupCameralength(self):
@@ -250,6 +259,8 @@ class ParameterController(QObject):
         self._view.cameraLengthSpinBox.valueChanged.connect(lambda v: self.update())
         self._view.cameraLengthCheckBox.clicked.connect(self.toggle_cameralength)
         self._view.cameraLengthSpinBox.valueChanged.connect(self.cameralengthChanged)
+        if self._view.cameraLengthCheckBox.isChecked():
+            self._model.set_nominal_cameralength(self._view.cameraLengthSpinBox.value())
 
     def toggle_cameralength(self):
         if self._view.cameraLengthCheckBox.isChecked():
@@ -260,10 +271,12 @@ class ParameterController(QObject):
         self.update()
 
     def setupAccelerationVoltage(self):
-        self._view.highTensionSpinBox.valueChanged.connect(self._model.set_acceleration_voltage)
+        self._view.highTensionSpinBox.valueChanged.connect(lambda x: self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value()))
         self._view.highTensionSpinBox.valueChanged.connect(self.update)
         self._view.highTensionCheckBox.clicked.connect(self.toggle_acceleration_voltage)
         self._view.highTensionSpinBox.valueChanged.connect(self.accelerationVoltageChanged)
+        if self._view.highTensionCheckBox.isChecked():
+            self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value())
 
     def toggle_acceleration_voltage(self):
         if self._view.highTensionCheckBox.isChecked():
@@ -277,12 +290,25 @@ class ParameterController(QObject):
         self._view.modeSelector.currentTextChanged.connect(self._model.set_mode)
         self._view.modeSelector.currentTextChanged.connect(self.update)
         self._view.modeSelector.currentIndexChanged.connect(self.modeChanged)
+        self._view.modeCheckBox.clicked.connect(self.toggle_mode)
+        if self._view.modeCheckBox.isChecked():
+            self._model.set_mode(self._view.modeSelector.currentText())
+
+    def toggle_mode(self):
+        if self._view.modeCheckBox.isChecked():
+            self._model.set_mode(self._view.modeSelector.currentText())
+        else:
+            self._model.set_mode('None')
+        self.modeChanged.emit()
+        self.update()
 
     def setupAlpha(self):
         self._view.alphaSpinBox.valueChanged.connect(self._model.set_alpha)
         self._view.alphaSpinBox.valueChanged.connect(self.update)
         self._view.alphaCheckBox.clicked.connect(self.toggle_alpha)
         self._view.alphaSpinBox.valueChanged.connect(self.alphaChanged)
+        if self._view.alphaCheckBox.isChecked():
+            self._model.set_alpha(self._view.alphaSpinBox.value())
 
     def toggle_alpha(self):
         if self._view.alphaCheckBox.isChecked():
@@ -297,6 +323,8 @@ class ParameterController(QObject):
         self._view.spotSpinBox.valueChanged.connect(self.update)
         self._view.spotCheckBox.clicked.connect(self.toggle_spot)
         self._view.spotSpinBox.valueChanged.connect(self.spotChanged)
+        if self._view.spotCheckBox.isChecked():
+            self._model.set_spot(self._view.spotSpinBox.value())
 
     def toggle_spot(self):
         if self._view.spotCheckBox.isChecked():
@@ -311,7 +339,9 @@ class ParameterController(QObject):
         self._view.spotSizeSpinBox.valueChanged.connect(self.update)
         self._view.spotSizeCheckBox.clicked.connect(self.toggle_spot_size)
         self._view.spotSizeSpinBox.valueChanged.connect(self.spotSizeChanged)
-
+        if self._view.spotSizeCheckBox.isChecked():
+            self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
+            
     def toggle_spot_size(self):
         if self._view.spotSizeCheckBox.isChecked():
             self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
@@ -325,6 +355,8 @@ class ParameterController(QObject):
         self._view.condenserApertureSpinBox.valueChanged.connect(self.update)
         self._view.condenserApertureCheckBox.clicked.connect(self.toggle_condenser_aperture)
         self._view.condenserApertureSpinBox.valueChanged.connect(self.condenserApertureChanged)
+        if self._view.condenserApertureCheckBox.isChecked():
+            self._model.set_nominal_condenser_aperture(self._view.condenserApertureSpinBox.value())
 
     def toggle_condenser_aperture(self):
         if self._view.condenserApertureCheckBox.isChecked():
@@ -339,6 +371,8 @@ class ParameterController(QObject):
         self._view.convergenceAngleSpinBox.valueChanged.connect(self.update)
         self._view.convergenceAngleCheckBox.clicked.connect(self.toggle_convergence_angle)
         self._view.convergenceAngleSpinBox.valueChanged.connect(self.convergenceAngleChanged)
+        if self._view.convergenceAngleCheckBox.isChecked():
+            self._model.set_nominal_convergence_angle(self._view.convergenceAngleSpinBox.value())
 
     def toggle_convergence_angle(self):
         if self._view.convergenceAngleCheckBox.isChecked():
@@ -353,6 +387,8 @@ class ParameterController(QObject):
         self._view.precessionAngleSpinBox.valueChanged.connect(self.update)
         self._view.precessionAngleCheckBox.clicked.connect(self.toggle_precession_angle)
         self._view.precessionAngleSpinBox.valueChanged.connect(self.rockingAngleChanged)
+        if self._view.precessionAngleCheckBox.isChecked():
+            self._model.set_nominal_rocking_angle(self._view.precessionAngleSpinBox.value())
 
     def toggle_precession_angle(self):
         if self._view.precessionAngleCheckBox.isChecked():
@@ -367,6 +403,8 @@ class ParameterController(QObject):
         self._view.precessionFrequencySpinBox.valueChanged.connect(self.update)
         self._view.precessionFrequencyCheckBox.clicked.connect(self.toggle_precession_frequency)
         self._view.precessionFrequencySpinBox.valueChanged.connect(self.rockingFrequencyChanged)
+        if self._view.precessionFrequencyCheckBox.isChecked():
+            self._model.set_rocking_frequency(self._view.precessionFrequencySpinBox.value())
 
     def toggle_precession_frequency(self):
         if self._view.precessionFrequencyCheckBox.isChecked():
@@ -380,6 +418,8 @@ class ParameterController(QObject):
         self._view.acquisitionDate.dateChanged.connect(lambda date: self._model.set_acquisition_date(date.toPyDate()))
         self._view.acquisitionDate.dateChanged.connect(self.update)
         self._view.acquisitionDateCheckBox.clicked.connect(self.toggle_acquisition_date)
+        if self._view.acquisitionDateCheckBox.isChecked():
+            self._model.set_acquisition_date(self._view.acquisitionDate.date().toPyDate())
 
     def toggle_acquisition_date(self):
         if self._view.acquisitionDateCheckBox.isChecked():
@@ -396,6 +436,9 @@ class ParameterController(QObject):
         self._view.stepGroupBox.clicked.connect(self.toggle_step_size)
         self._view.stepXSpinBox.valueChanged.connect(self.stepSizeXChanged)
         self._view.stepYSpinBox.valueChanged.connect(self.stepSizeYChanged)
+        if self._view.stepGroupBox.isChecked():
+            self._model.set_nominal_scan_step_x(self._view.stepXSpinBox.value())
+            self._model.set_nominal_scan_step_y(self._view.stepYSpinBox.value())
 
     def toggle_step_size(self):
         if self._view.stepGroupBox.isChecked():
@@ -406,6 +449,38 @@ class ParameterController(QObject):
             self._model.set_nominal_scan_step_y(nan)
         self.stepSizeXChanged.emit()
         self.stepSizeYChanged.emit()
+        self.update()
+
+    def setupCamera(self):
+        self._view.cameraComboBox.currentTextChanged.connect(lambda text: self._model.set_camera(str(text)))
+        self._view.cameraComboBox.currentTextChanged.connect(self.update)
+        self._view.cameraComboBox.currentTextChanged.connect(self.cameraChanged)
+        self._view.cameraCheckBox.clicked.connect(self.toggle_camera)
+        if self._view.cameraCheckBox.isChecked():
+            self._model.set_camera(str(self._view.cameraComboBox.currentText()))
+
+    def toggle_camera(self):
+        if self._view.cameraCheckBox.isChecked():
+            self._model.set_camera(str(self._view.cameraComboBox.currentText()))
+        else:
+            self._model.set_camera('')
+        self.cameraChanged.emit()
+        self.update()
+    
+    def setupMicroscopeName(self):
+        self._view.microscopeComboBox.currentTextChanged.connect(lambda text: self._model.set_microscope_name(str(text)))
+        self._view.microscopeComboBox.currentTextChanged.connect(self.update)
+        self._view.microscopeComboBox.currentTextChanged.connect(self.microscopeNameChanged)
+        self._view.microscopeCheckBox.clicked.connect(self.toggle_microscope)
+        if self._view.microscopeCheckBox.isChecked():
+            self._model.set_microscope_name(str(self._view.microscopeComboBox.currentText()))
+
+    def toggle_microscope(self):
+        if self._view.microscopeCheckBox.isChecked():
+            self._model.set_microscope_name(str(self._view.microscopeComboBox.currentText()))
+        else:
+            self._model.set_microscope_name('')
+        self.microscopeNameChanged.emit()
         self.update()
 
     def update(self, *args, **kwargs):
@@ -564,8 +639,10 @@ class mib2hspyModel(QObject):
         if not filename.exists():
             raise FileExistsError
         if filename.suffix == '.csv':
-            self.calibrationfile = pd.read_csv(filename)  # .fillna(nan)
-            # self.calibrationfile.fillna(nan)
+            self.calibrationfile = pd.read_csv(filename)
+            self.calibrationLoaded.emit()
+        elif filename.suffix == '.xlsx':
+            self.calibrationfile = pd.read_excel(filename, engine='openpyxl')
             self.calibrationLoaded.emit()
         else:
             self.calibrationfile = None
@@ -668,11 +745,12 @@ class mib2hspyController(object):
         self._model.calibrationLoaded.connect(lambda: self._view.calibrationStatusIndicator.setActive())
         self._model.calibrationCleared.connect(lambda: self._view.calibrationStatusIndicator.setInactive())
 
-        self._parameter_controller.magModeChanged.connect(self.calibrate)
+        #self._parameter_controller.magModeChanged.connect(self.calibrate)
         self._parameter_controller.modeChanged.connect(self.calibrate)
         self._parameter_controller.alphaChanged.connect(self.calibrate)
         self._parameter_controller.accelerationVoltageChanged.connect(self.calibrate)
         self._parameter_controller.magnificationChanged.connect(self.calibrate_magnification)
+        self._parameter_controller.magModeChanged.connect(self.calibrate_magnification)
         self._parameter_controller.cameralengthChanged.connect(self.calibrate_cameralength)
         # self._parameter_controller.spotChanged.connect(self.calibrate_spotsize)
         self._parameter_controller.spotSizeChanged.connect(self.calibrate_spotsize)
@@ -682,6 +760,8 @@ class mib2hspyController(object):
         # self._parameter_controller.rockingFrequencyChanged.connect(self.calibrate)
         self._parameter_controller.stepSizeXChanged.connect(self.calibrate_scan_step_x)
         self._parameter_controller.stepSizeYChanged.connect(self.calibrate_scan_step_y)
+        self._parameter_controller.cameraChanged.connect(self.calibrate)
+        self._parameter_controller.microscopeNameChanged.connect(self.calibrate)
 
         self._view.useCalibrationFileRadioButton.clicked.connect(self.calibrate)
         self._view.useManualCalibrationRadioButton.clicked.connect(self.calibrate)
@@ -693,6 +773,9 @@ class mib2hspyController(object):
         self._view.spotSizeSpinBox.valueChanged.connect(self.calibrate_spotsize)
         self._view.cameraLengthSpinBox.valueChanged.connect(self.calibrate_cameralength)
         self._view.magnificationSpinBox.valueChanged.connect(self.calibrate_magnification)
+
+
+        self._view.printCalibrationFileButton.clicked.connect(lambda: print(self._model.calibrationfile))
 
     def setupSettingsSignals(self):
         self._view.actionSettings.triggered.connect(self.open_settings_dialog)
@@ -718,7 +801,7 @@ class mib2hspyController(object):
                 logging.getLogger().info(
                     'Default data root {data_path!r} is invalid, will continue to use {setting!r}'.format(
                         data_path=data_path, setting=self._view.get_setting('default_data_root')))
-            if calibration_path.suffix == '.csv' and calibration_path.exists():
+            if calibration_path.suffix in ['.csv', '.xlsx'] and calibration_path.exists():
                 self._view.set_setting('default_calibration_file', str(calibration_path))
                 self._view.calibrationFilePathField.setText(str(calibration_path))
                 self._model.load_calibrationfile(self._view.calibrationFilePathField.text())
@@ -825,7 +908,7 @@ class mib2hspyController(object):
         self._parameter_controller.get_model().spotsize.set_value(self.get_spotsize_calibration())
         self._parameter_controller.update()
 
-    def get_calibration(self, name, query):
+    def get_calibration(self, name, query, base_query=None):
         """
         Find a calibration of `name` in the calibration file matching a query.
 
@@ -835,8 +918,14 @@ class mib2hspyController(object):
         :type name: str
         :param query: The query to perform to filter the dataframe
         :type query: str
+        :param base_query: The base query to add to the specified query. Default is None, in which case a query for "`Acceleration Voltage (V)` == {} & `Camera`== {} & `Microscope`=={}" will be added.
+        :type base_query: Union[NoneType, str]
         :return: Returns nan if no calibration is found and the content of the last entry in the requested column otherwise.
         """
+        if base_query is None:
+            parameters = self._parameter_controller.get_model()
+            base_query = "`Acceleration Voltage (V)` == {parameters.acceleration_voltage.value} & `Camera`== '{parameters.camera.value}' & `Microscope`== '{parameters.microscope_name.value}'".format(parameters=parameters)
+        query = '{base} & {query}'.format(base=base_query, query=query)
 
         if self._model.calibrationfile is None:
             return nan
@@ -852,37 +941,38 @@ class mib2hspyController(object):
             else:
                 valid_calibration = nan
         finally:
-            logging.getLogger().info(
-                'Got "{name}" calibration {calibration}'.format(name=name, calibration=valid_calibration))
+            logging.getLogger().info('Result from calibration query "{query}"\n\t{name}={result}'.format(query=query, name=name, result=valid_calibration))
+            #logging.getLogger().info(
+            #    'Got "{name}" calibration {calibration}'.format(name=name, calibration=valid_calibration))
             return valid_calibration
 
     def get_cameralength_calibration(self):
         """Get the calibration value from a file or from input in the GUI"""
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(
+            query = "`Nominal Cameralength (cm)` == {parameters.cameralength.nominal_value}".format(
                 parameters=parameters)
-            return self.get_calibration('Camera Length (cm)', query)
+            return self.get_calibration('Cameralength (cm)', query)
         else:
             return self._view.cameraLengthSpinBox.value()
 
     def get_magnification_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
+            query = "`Nominal Magnification ()` == {parameters.magnification.nominal_value} & `Mag mode` == '{parameters.mag_mode.value}'".format(
                 parameters=parameters)
-            return self.get_calibration('Magnification', query)
+            return self.get_calibration('Magnification ()', query)
         else:
             return self._view.magnificationSpinBox.value()
 
     def get_image_scale_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`HT`== {parameters.acceleration_voltage.value} & `Nominal Mag` == {parameters.magnification.nominal_value} & `Mag Mode` == '{parameters.mag_mode.value}'".format(
+            query = "`Nominal Magnification ()` == {parameters.magnification.nominal_value} & `Mag mode` == '{parameters.mag_mode.value}'".format(
                 parameters=parameters)
-            return self.get_calibration('Scale (nm/px)', query)
+            return self.get_calibration('Scale (nm)', query)
         else:
-            if self._view.scaleSelector.currentText() == 'Å/px':
+            if self._view.scaleSelector.currentText() == 'Å':
                 return self._view.scaleSpinBox.value()
             else:
                 return nan
@@ -890,11 +980,11 @@ class mib2hspyController(object):
     def get_diffraction_scale_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`HT`== {parameters.acceleration_voltage.value} & `Nominal Camera Length (cm)` == {parameters.cameralength.nominal_value}".format(
+            query = "`Nominal Cameralength (cm)` == {parameters.cameralength.nominal_value}".format(
                 parameters=parameters)
-            return self.get_calibration('Scale (1/Å/px', query)
+            return self.get_calibration('Scale (1/Å)', query)
         else:
-            if self._view.scaleSelector.currentText() == '1/Å/px':
+            if self._view.scaleSelector.currentText() == '1/Å':
                 return self._view.scaleSpinBox.value()
             else:
                 return nan
@@ -903,10 +993,10 @@ class mib2hspyController(object):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
             if parameters.mode.value == 'STEM':
-                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                query = "`Mode` == '{parameters.mode.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
                     parameters=parameters)
             else:
-                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
                     parameters=parameters)
             return self.get_calibration('Step Size X (nm)', query)
         else:
@@ -916,10 +1006,10 @@ class mib2hspyController(object):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
             if parameters.mode.value == 'STEM':
-                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                query = "`Mode` == '{parameters.mode.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
                     parameters=parameters)
             else:
-                query = "`Mode` == '{parameters.mode.value}' & `HT` == {parameters.acceleration_voltage.value} & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
                     parameters=parameters)
             return self.get_calibration('Step Size Y (nm)', query)
         else:
@@ -927,17 +1017,17 @@ class mib2hspyController(object):
 
     def get_image_rotation_calibration(self):
         parameters = self._parameter_controller.get_model()
-        query = "`HT` == {parameters.acceleration_voltage.value} & `Mag Mode` == '{parameters.mag_mode.value}' & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
+        query = "`Mag Mode` == '{parameters.mag_mode.value}' & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
             parameters=parameters)
         return self.get_calibration('Image Rotation (deg)', query)
 
     def get_scan_rotation_calibration(self):
         parameters = self._parameter_controller.get_model()
         if parameters.mode.value == 'STEM':
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}'".format(
+            query = "`Mode` == '{parameters.mode.value}'".format(
                 parameters=parameters)
         else:
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value}".format(
+            query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value}".format(
                 parameters=parameters)
         return self.get_calibration('Scan Rotation (deg)', query)
 
@@ -950,7 +1040,7 @@ class mib2hspyController(object):
             if parameters.mode.value == 'STEM':
                 return nan
             else:
-                query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
+                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
                     parameters=parameters)
                 return self.get_calibration('Precession Angle (deg)', query)
         else:
@@ -961,7 +1051,7 @@ class mib2hspyController(object):
         if parameters.mode.value == 'STEM':
             return nan
         else:
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
+            query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
                 parameters=parameters)
             return self.get_calibration('Precession Eccentricity', query)
 
@@ -974,10 +1064,10 @@ class mib2hspyController(object):
     def get_convergence_angle_calibration(self):
         parameters = self._parameter_controller.get_model()
         if parameters.mode == 'STEM':
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+            query = "`Mode` == '{parameters.mode.value}' & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
                 parameters=parameters)
         else:
-            query = "`HT` == {parameters.acceleration_voltage.value} & `Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+            query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
                 parameters=parameters)
         return self.get_calibration('Convergence Angle (mrad)', query)
 
@@ -985,10 +1075,10 @@ class mib2hspyController(object):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
             if parameters.mode == 'TEM':
-                query = "`HT` == {parameters.acceleration_voltage.value} & `Spot` == {parameters.spot.value}".format(
+                query = "`Spot` == {parameters.spot.value}".format(
                     parameters=parameters)
             else:
-                query = "`HT` == {parameters.acceleration_voltage.value} & `Nominal Spotsize (nm)` == {parameters.spotsize.nominal_value}".format(
+                query = "`Nominal Spotsize (nm)` == {parameters.spotsize.nominal_value}".format(
                     parameters=parameters)
             return self.get_calibration('Spotsize (nm)', query)
         else:
@@ -1346,7 +1436,7 @@ class mib2hspyController(object):
 class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent):
         super(SettingsDialog, self).__init__(parent)
-        uic.loadUi('./source/QTCmib2hspy/settingsdialog.ui', self)
+        uic.loadUi(str(Path(__file__).parent / './source/QTCmib2hspy/settingsdialog.ui'), self)
 
 
 def run_gui():

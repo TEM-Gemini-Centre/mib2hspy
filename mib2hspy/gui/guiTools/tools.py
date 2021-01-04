@@ -270,10 +270,10 @@ class StatusError(Error):
 
 class StatusIndicator(QtWidgets.QLabel):
     """A status indicator widget"""
-    inactive_pixmap_path = Path('./source/icons/Off.png')
-    active_pixmap_path = Path('./source/icons/On.png')
-    busy_pixmap_path = Path('./source/icons/Busy.png')
-    none_pixmap_path = Path('./source/icons/None.png')
+    inactive_pixmap_path = Path(__file__).parent / Path('../source/icons/Off.png')
+    active_pixmap_path = Path(__file__).parent / Path('../source/icons/On.png')
+    busy_pixmap_path = Path(__file__).parent / Path('../source/icons/Busy.png')
+    none_pixmap_path = Path(__file__).parent / Path('../source/icons/None.png')
 
     statusChanged = pyqtSignal([], [str], [int], [bool], [QObject])
     none_statuses = [-1, 'None', '', None]
@@ -327,7 +327,7 @@ class StatusIndicator(QtWidgets.QLabel):
             pixmap = QPixmap(str(pixmap_path))
             if pixmap.isNull():
                 raise ValueError(
-                    'Image for status {self.status} is Null (path: "{path}"!'.format(self=self, path=pixmap_path))
+                    'Image for status {self._status} is Null (path: "{path}"!'.format(self=self, path=pixmap_path))
             self.setPixmap(pixmap)
 
     def get_status(self):
