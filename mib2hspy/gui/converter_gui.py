@@ -9,6 +9,8 @@ import pyxem as pxm
 import pandas as pd
 from numpy import nan
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+import numpy as np
 
 from mib2hspy.Tools.hdrtools import MedipixHDRcontent
 
@@ -25,8 +27,138 @@ class FileError(Error):
     pass
 
 
+class MIBDataFile(QObject):
+    plot_extensions = ['.jpg', '.png']
+
+    def __init__(self, path='', parent=None):
+        super(MIBDataFile, self).__init__(parent=parent)
+        path = Path(path)
+        if not path.suffix == '.mib':
+            raise FileError('File "{path}" is not a mib file'.format(path=path))
+        self.path = Path(path)
+        self.name = self.path.stem
+        self.data = None
+        self.header = None
+        self.dimensions = None
+        self.data_type = None
+
+        self.load()
+
+        # Widgets
+        self.print_button = QtWidgets.QPushButton('Print', parent=self.parent())
+        self.print_button.clicked.connect(lambda: print(self))
+
+        self.plot_button = QtWidgets.QPushButton('Plot', parent=self.parent())
+        self.plot_button.clicked.connect(self.plot)
+
+        # Attempt to extract info from filename
+        split_name = self.name.split('_')
+        scale = 0
+        units = 'cm'
+        for part in split_name:
+            if 'kx' in part:
+                scale = float(part.replace('kx', ''))
+                units = 'kx'
+            if 'Mx' in part:
+                scale = float(part.replace('Mx', ''))
+                units = 'Mx'
+            if 'cm' in part:
+                scale = float(part.replace('cm', ''))
+                units = 'cm'
+            if 'mm' in part:
+                scale = float(part.replace('mm', ''))
+                units = 'mm'
+
+        # Create scale widget
+        self.scale_widget = QtWidgets.QDoubleSpinBox(parent=self.parent())
+        self.scale_widget.setMinimum(0)
+        self.scale_widget.setMaximum(999.999)
+        self.scale_widget.setDecimals(3)
+        self.scale_widget.setSingleStep(0.1)
+        self.scale_widget.setValue(scale)
+
+        # Add units selector
+        self.units_widget = QtWidgets.QComboBox(parent=self.parent())
+        self.units_widget.addItems(['cm', 'mm', 'kx', 'Mx'])
+        self.units_widget.setCurrentText(units)
+
+        # Add exposuretime counter [WILL BE REMOVED]
+        self.exposure_widget = QtWidgets.QSpinBox()
+        self.exposure_widget.setMinimum(0)
+        self.exposure_widget.setMaximum(int(1E9))
+        self.exposure_widget.setValue(0)
+        self.exposure_widget.setSingleStep(1)
+
+        # Add mode selector
+        self.mode_widget = QtWidgets.QComboBox()
+        self.mode_widget.addItems(['None', 'TEM', 'NBD', 'CBD'])
+        self.mode_widget.setCurrentIndex(0)
+
+        # Add convergence angle spinbox
+        self.condenser_widget = QtWidgets.QComboBox()
+        self.condenser_widget.addItems(['None', '1', '2', '3', '4'])
+        self.condenser_widget.setCurrentIndex(0)
+
+    def __repr__(self):
+        return '{self.__class__.__name__}(path={self.path!r})'.format(self=self)
+
+    def __str__(self):
+        return 'MIB file at "{self.path}":\n\tName: {self.name}\n\tData: {self.data}\n\tDimensions: {self.dimensions}\n\tAxes Manager:\n{self.data.axes_manager}\n\tMetadata:\n{self.data.metadata}\n\tOriginal Metadata:\n{self.data.original_metadata}\n\tPlot Button: {self.plot_button}\n\tPrint Button: {self.print_button}\n\tHeader: {self.header}'.format(
+            self=self)
+
+    def __hash__(self):
+        return hash(self.path)
+
+    def load(self):
+        self.data = pxm.load_mib(str(self.path))
+        if len(self.data) == 1:
+            self.data = pxm.ElectronDiffraction2D(self.data.inav[0])  # extract single frame if only one dimension!
+        if self.path.with_suffix('.hdr').exists():
+            self.header = MedipixHDRcontent(self.path.with_suffix('.hdr'))
+        else:
+            self.header = None
+        self.dimensions = len(self.data)
+
+    def save(self, extensions):
+        if not isinstance(extensions, (list, tuple)):
+            extensions = list(extensions)
+
+        for extension in extensions:
+            if extension in self.plot_extensions:
+                self.data.plot()
+                fig = plt.gcf()
+                fig.savefig(self.path.with_suffix(extension))
+                plt.close(fig)
+            else:
+                self.data.save(str(self.path.with_suffix(extension)))
+
+    def plot(self):
+        plot_window = PlotWindow(self.parent())
+        plot_window.show()
+
+        scale_x = self.data.axes_manager[0].scale
+        scale_y = self.data.axes_manager[1].scale
+        size_x = self.data.axes_manager[0].size
+        size_y = self.data.axes_manager[1].size
+        extent = [-scale_x / 2, size_x * scale_x - scale_x / 2, -scale_y / 2, size_y * scale_y - scale_y / 2]
+
+        if 'x' not in self.units_widget.currentText():
+            plot_window.plot(self.data, log_scale=True, extent=extent)
+        else:
+            plot_window.plot(self.data, extent=extent)
+
+    def calibrate(self):
+        if self.units_widget.currentText() in ['cm', 'mm']:
+            self.data_type = 'DIFF'
+        else:
+            self.data_type = 'IMG'
+
+
+
+
 class MainWindow(QtWidgets.QMainWindow):
     data_root = Path(r'C:\Users\emilc\OneDrive - NTNU\NORTEM\Merlin')
+    fileListRefreshed = pyqtSignal([], [dict], name='fileListRefreshed')
 
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
@@ -46,8 +178,14 @@ class MainWindow(QtWidgets.QMainWindow):
     @pyqtSlot(dict, name='refreshFileList')
     def refreshFileList(self, files):
 
-        for i in reversed(range(self.fileListLayout.count())):
-            self.fileListLayout.itemAt(i).widget().setParent(None)
+        # for i in reversed(range(self.fileListLayout.count())):
+        #    self.fileListLayout.itemAt(i).widget().setParent(None)
+        while self.fileListLayout.count():
+            child = self.fileListLayout.takeAt(0)
+            if child.widget():
+                self.fileListLayout.removeWidget(child)
+                child.hide()
+                # child.widget().deleteLater()
 
         if not isinstance(files, dict):
             raise TypeError(
@@ -55,97 +193,46 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Create headers
         for col, label in enumerate(
-                ['#', 'Name', 'Dim', 'Data', 'Print', 'Plot', 'CL/Mag', 'Units', 'Exposure Time [ms]', 'Mode', 'Condenser Aperture']):
+                ['#', 'Name', 'Dim', 'Data', 'Print', 'Plot', 'CL/Mag', 'Units', 'Exposure Time [ms]', 'Mode',
+                 'Condenser Aperture']):
             widget = QtWidgets.QLabel(label)
             widget.adjustSize()
             self.fileListLayout.addWidget(widget, 0, col)
 
         for row, file_id in enumerate(files):
-            file_info = files[file_id]
-
-            # Add file info fields
-            for col, label in enumerate([file_id, file_info['Name'], file_info['Dimensions'], file_info['Data']]):
+            file = files[file_id]
+            if not isinstance(file, MIBDataFile):
+                raise TypeError('file {file!r} is not MIBDataFile'.format(file=file))
+            # Add file widgets into layout
+            for col, label in enumerate(
+                    [file_id, file.name, file.dimensions, file.data]):
                 widget = QtWidgets.QLabel(str(label))
                 widget.adjustSize()
                 self.fileListLayout.addWidget(widget, row + 1, col)
 
-            # Add print button
-            print_btn = QtWidgets.QPushButton('Print')
-            print_btn.clicked.connect(lambda: print('"{name}" ({data}):\n***Axes Manager***\n{data.axes_manager}\n\n***Metadata***\n{data.metadata}\n\n***Original Metadata***\n{data.original_metadata}\n\n'.format(name=file_info['Name'], data=file_info['Data'])))
-            self.fileListLayout.addWidget(print_btn, row + 1, 4)
-
-            # Add Plot button
-            plot_btn = QtWidgets.QPushButton('Plot')
-            plot_btn.clicked.connect(lambda: self.plot_image(file_info['Data']))
-            self.fileListLayout.addWidget(plot_btn, row + 1, 5)
-
-            #Attempt to extract info from filename
-            split_name = file_info['Name'].split('_')
-            scale = 0
-            units = 'cm'
-            for part in split_name:
-                if 'kx' in part:
-                    scale = float(part.replace('kx', ''))
-                    units = 'kx'
-                if 'Mx' in part:
-                    scale = float(part.replace('Mx', ''))
-                    units = 'Mx'
-                if 'cm' in part:
-                    scale = float(part.replace('cm', ''))
-                    units = 'cm'
-
-            # Add metadata fields
-            # Create and add scale widget
-            scale_widget = QtWidgets.QDoubleSpinBox()
-            scale_widget.setMinimum(0)
-            scale_widget.setMaximum(999.999)
-            scale_widget.setDecimals(3)
-            scale_widget.setSingleStep(0.1)
-            scale_widget.setValue(scale)
-            file_info['ScaleWidget'] = scale_widget
-            self.fileListLayout.addWidget(scale_widget, row + 1, 6)
-
-            # Add units selector
-            units_widget = QtWidgets.QComboBox()
-            units_widget.addItems(['cm', 'mm', 'kx', 'Mx'])
-            units_widget.setCurrentText(units)
-            file_info['UnitsWidget'] = units_widget
-            self.fileListLayout.addWidget(units_widget, row + 1, 7)
-
-            # Add exposuretime counter [WILL BE REMOVED]
-            exptime_widget = QtWidgets.QSpinBox()
-            exptime_widget.setMinimum(0)
-            exptime_widget.setMaximum(int(1E9))
-            exptime_widget.setValue(0)
-            exptime_widget.setSingleStep(1)
-            file_info['ExposureTimeWidget'] = exptime_widget
-            self.fileListLayout.addWidget(exptime_widget, row + 1, 8)
-
-            # Add mode selector
-            mode_widget = QtWidgets.QComboBox()
-            mode_widget.addItems(['None', 'TEM', 'NBD', 'CBD'])
-            mode_widget.setCurrentIndex(0)
-            file_info['ModeWidget'] = mode_widget
-            self.fileListLayout.addWidget(mode_widget, row + 1, 9)
-
-            # Add convergence angle spinbox
-            condenser_aperture_widget = QtWidgets.QComboBox()
-            condenser_aperture_widget.addItems(['None', '1', '2', '3', '4'])
-            file_info['CondenserApertureWidget'] = condenser_aperture_widget
-            self.fileListLayout.addWidget(condenser_aperture_widget, row + 1, 10)
+            # Add widgets
+            self.fileListLayout.addWidget(file.print_button, row + 1, 4)
+            self.fileListLayout.addWidget(file.plot_button, row + 1, 5)
+            self.fileListLayout.addWidget(file.scale_widget, row + 1, 6)
+            self.fileListLayout.addWidget(file.units_widget, row + 1, 7)
+            self.fileListLayout.addWidget(file.exposure_widget, row + 1, 8)
+            self.fileListLayout.addWidget(file.mode_widget, row + 1, 9)
+            self.fileListRefreshed.emit()
+            self.fileListRefreshed[dict].emit(files)
 
     def plot_image(self, data):
         plot_window = PlotWindow(self)
         plot_window.show()
         plot_window.plot(data.inav[0].data)
 
+
 class mibConverterModel(QObject):
     directoryChanged = pyqtSignal([], [str], name='directoryChanged')
     filesLoaded = pyqtSignal([], [dict], [int], name='filesLoaded')
     filesConverted = pyqtSignal([], [int], name='filesConverted')
 
-    def __init__(self):
-        super(mibConverterModel, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(mibConverterModel, self).__init__(*args, **kwargs)
         self.directory = None
         self.files = None
 
@@ -200,14 +287,7 @@ class mibConverterModel(QObject):
         filenames = self.get_filenames(directory)
         self.files = {}
         for filenumber, filename in enumerate(filenames):
-            data = pxm.load_mib(str(filename))
-            if filename.with_suffix('.hdr').exists():
-                header = MedipixHDRcontent(filename.with_suffix('.hdr'))
-                header.load_hdr()
-            else:
-                header = None
-            self.files[filenumber] = {'Path': filename, 'Name': filename.stem, 'Data': data, 'Dimensions': len(data),
-                                      'Header': header}
+            self.files.update({filenumber: MIBDataFile(filename, parent=self.parent())})
         self.filesLoaded.emit()
         self.filesLoaded[dict].emit(self.files)
         self.filesLoaded[int].emit(len(self.files))
@@ -229,17 +309,9 @@ class mibConverterModel(QObject):
         if self.files is not None:
             for file_number in self.files:
                 file = self.files[file_number]
-                print('Converting file {file_number}: "{name}"'.format(file_number=file_number, name=file['Name']))
-                for file_format in formats:
-                    new_filename = file['Path'].with_suffix(file_format)
-                    if file_format in ['.jpg', '.png', '.bmp']:
-                        file['Data'].plot()
-                        fig = plt.gcf()
-                        fig.savefig(new_filename)
-                        plt.close(fig)
-                    else:
-                        file['Data'].save(new_filename)
-                    converted_files += 1
+                print('Converting file {file_number}: "{name}"'.format(file_number=file_number, name=file.name))
+                file.save(formats)
+                converted_files += 1
         else:
             raise FileError('{self!r} has no files to convert'.format(self=self))
         self.filesConverted.emit()
@@ -274,6 +346,11 @@ class mibConverterController(object):
 
 
 class PlotWindow(QtWidgets.QDialog):
+    scale_bar_sizes = np.array(
+        [0.01, 0.02, 0.05, 0.07, 0.1, 0.2, 0.5, 0.7, 1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150, 200,
+         250, 300, 350, 400, 450, 500])
+    scale_bar_fraction = 1 / 5
+
     def __init__(self, parent=None):
         super(PlotWindow, self).__init__(parent)
 
@@ -295,18 +372,46 @@ class PlotWindow(QtWidgets.QDialog):
 
         self.setLayout(layout)
 
-    def plot(self, image):
+        self.ax = self.figure.add_subplot(111)
+
+    def plot(self, image, *args, log_scale=False, **kwargs):
         # create an axis
-        ax = self.figure.add_subplot(111)
 
         # discards the old graph
-        ax.clear()
+        self.ax.clear()
 
         # plot data
-        ax.imshow(image)
+        if log_scale:
+            self.ax.imshow(np.log(image), *args, **kwargs)
+        else:
+            self.ax.imshow(image, *args, **kwargs)
+
+        # Add Scalebar
+        scale_x = image.axes_manager[0].scale
+        scale_y = image.axes_manager[1].scale
+        size_x = image.axes_manager[0].size
+        size_y = image.axes_manager[1].size
+        units = image.axes_manager[0].units
+        scale_bar_length = self.scale_bar_sizes[
+            np.argmin(np.abs(self.scale_bar_sizes - self.scale_bar_fraction * size_x * scale_x))]
+        if scale_bar_length < 0:
+            if scale_bar_length < 0.1:
+                scalebar_label = '{scale_bar_length:.2f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+            else:
+                scalebar_label = '{scale_bar_length:.1f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+        else:
+            scalebar_label = '{scale_bar_length:.0f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+
+        xy = (0.01 * scale_x * size_x, 0.01 * scale_y * size_y)
+        width = scale_bar_length
+        height = 0.01 * scale_y * size_y
+        patch = Rectangle(xy=xy, width=width, height=height, color='w')
+        self.ax.add_patch(patch)
+        self.ax.annotate(scalebar_label, xy=(xy[0] + width / 2, xy[1] + height), ha='center', va='bottom', color='w')
 
         # refresh canvas
         self.canvas.draw()
+
 
 def run_converter_gui():
     main()
@@ -323,7 +428,7 @@ def main():
     main_window = MainWindow()
     main_window.show()
 
-    model = mibConverterModel()
+    model = mibConverterModel(parent=main_window)
     controller = mibConverterController(main_window, model)
 
     sys.exit(myqui.exec_())
