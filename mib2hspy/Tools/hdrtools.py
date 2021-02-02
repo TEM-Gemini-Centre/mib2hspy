@@ -80,11 +80,11 @@ class MedipixHDRcontent(object):
         self.software_version = MedipixHDRfield('Software Version', '')
 
     def __repr__(self):
-        return '{self.__class__.__name__}({self.directory!r})'.format(self=self)
+        return '{self.__class__.__name__}({self.filename!r})'.format(self=self)
 
     def __str__(self):
         content = '\n\t'.join(['{field.name}: {field.value}'.format(field=field) for field in self])
-        return 'Content of Medipix HDR file "{self.directory}":\n\t{content}'.format(self=self, content=content)
+        return 'Content of Medipix HDR file "{self.filename}":\n\t{content}'.format(self=self, content=content)
 
     def set_filename(self, filename):
         if not isinstance(filename, (str, Path)):
@@ -161,7 +161,7 @@ class MedipixHDRcontent(object):
                         except IndexError as e:
                             raise e
         else:
-            msg = 'HDR file "{self.directory}" does not exist. Please set correct HDR directory before loading content'.format(
+            msg = 'HDR file "{self.filename}" does not exist. Please set correct HDR directory before loading content'.format(
                 self=self)
             raise FileNotFoundError(msg)
 
