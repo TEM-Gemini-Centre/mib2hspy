@@ -576,10 +576,10 @@ class mib2hspyModel(QObject):
 
     def set_filename(self, filename):
         """
-        Sets the filename of the model
+        Sets the directory of the model
         :param filename: The path to the data file to use
         :type filename: str
-        :type filename: Path
+        :type directory: Path
         :return:
         """
         if not isinstance(filename, (str, Path)):
@@ -596,10 +596,10 @@ class mib2hspyModel(QObject):
     def load_file(self, filename=None):
         """
         Loads a datafile.
-        :param filename: The path to the data file to be used. Optional. Default is `None`, and then the preset filename will be used.
+        :param filename: The path to the data file to be used. Optional. Default is `None`, and then the preset directory will be used.
         :type filename: str
-        :type filename: Path
-        :type filename: NoneType
+        :type directory: Path
+        :type directory: NoneType
         :return:
         """
         if filename is not None:
@@ -612,13 +612,13 @@ class mib2hspyModel(QObject):
                 self.dataLoaded.emit()
                 print(self.data)
             else:
-                logging.getLogger().info('No filename set!')
+                logging.getLogger().info('No directory set!')
         except Exception as e:
             logging.getLogger().error(e)
 
     def load_hdr(self):
         """
-        Load a .hdr file. Can only be used if the filename of the .mib file is already set.
+        Load a .hdr file. Can only be used if the directory of the .mib file is already set.
         :return:
         """
         if self.filename is None:
