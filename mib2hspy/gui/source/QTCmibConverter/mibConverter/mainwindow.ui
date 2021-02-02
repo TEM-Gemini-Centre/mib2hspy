@@ -51,7 +51,7 @@
             <x>0</x>
             <y>0</y>
             <width>1044</width>
-            <height>434</height>
+            <height>367</height>
            </rect>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_4">
@@ -141,6 +141,16 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="overwriteCheckBox">
+         <property name="text">
+          <string>Overwrite</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QPushButton" name="convertButton">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
@@ -164,7 +174,7 @@
      <x>0</x>
      <y>0</y>
      <width>1092</width>
-     <height>21</height>
+     <height>26</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuSettings">

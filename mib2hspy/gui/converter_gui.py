@@ -11,6 +11,7 @@ from numpy import nan
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
+import pandas as pd
 
 from mib2hspy.Tools.hdrtools import MedipixHDRcontent
 
@@ -40,7 +41,7 @@ class MIBDataFile(QObject):
         self.data = None
         self.header = None
         self.dimensions = None
-        self.data_type = None
+        self.signal_type = None
 
         self.load()
 
@@ -119,18 +120,21 @@ class MIBDataFile(QObject):
             self.header = None
         self.dimensions = len(self.data)
 
-    def save(self, extensions):
+    def save(self, extensions, overwrite=True):
         if not isinstance(extensions, (list, tuple)):
             extensions = list(extensions)
 
         for extension in extensions:
             if extension in self.plot_extensions:
-                self.data.plot()
+                if self.signal_type == 'DIFF':
+                    self.data.plot(norm='log')
+                else:
+                    self.data.plot()
                 fig = plt.gcf()
                 fig.savefig(self.path.with_suffix(extension))
                 plt.close(fig)
             else:
-                self.data.save(str(self.path.with_suffix(extension)))
+                self.data.save(str(self.path.with_suffix(extension)), overwrite=overwrite)
 
     def plot(self):
         plot_window = PlotWindow(self.parent())
@@ -147,14 +151,75 @@ class MIBDataFile(QObject):
         else:
             plot_window.plot(self.data, extent=extent)
 
-    def calibrate(self):
-        if self.units_widget.currentText() in ['cm', 'mm']:
-            self.data_type = 'DIFF'
+    def calibrate(self, calibration_table, signal_type=None):
+        """
+        Calibrate the signal using the provided calibration table
+        :param calibration_table: The calibration table to use
+        :type calibration_table: pandas.DataFrame
+        :param signal_type: How to interpret the signal. Should be either None, 'DIFF', or 'IMG'. Default is None, and the value of the units widget will be used to determine the type.
+        :type signal_type: Union[NoneType, str]
+        :return:
+        """
+        if not isinstance(calibration_table, pd.DataFrame):
+            raise TypeError('{calibration_table!r} is an invalid calibration table. Only pandas.DataFrame objects are accepted.')
+
+        if signal_type not in [None, 'DIFF', 'IMG']:
+            raise ValueError('`signal_type={signal_type}` is invalid, only `None`, `"DIFF"`, and `"IMG"` are accepted values'.format(signal_type=signal_type))
+        if signal_type is None:
+            if self.units_widget.currentText() in ['cm', 'mm']:
+                self.signal_type = 'DIFF'
+                if self.units_widget.currentText() == 'cm':
+                    mag = self.scale_widget.value()
+                elif self.units_widget.currentText() == 'mm':
+                    mag = self.scale_widget.value() / 10
+                else:
+                    raise ValueError('Units widget value {units} is not recognized as a cameralength unit'.format(units=self.units_widget.currentText()))
+            else:
+                self.signal_type = 'IMG'
+                if self.units_widget.currentText() == 'x':
+                    mag = self.scale_widget.value()
+                elif self.units_widget.currentText() == 'kx':
+                    mag = self.scale_widget.value() * 1E3
+                elif self.units_widget.currentText() == 'Mx':
+                    mag = self.scale_widget.value() * 1E6
+                else:
+                    raise ValueError('Units widget value {units} is not recognized as a magnification unit'.format(units=self.units_widget.currentText()))
         else:
-            self.data_type = 'IMG'
+            self.signal_type = signal_type
 
+        #Change to get acceleration voltage from spinboxes in future.
+        if self.signal_type == 'DIFF':
+            query = '`Acceleration Voltage (V)`==200000 & `Camera` == "Merlin" & `Nominal Cameralength (cm)` == @mag'
+            calibration_matches = calibration_table.query(query)['Scale (1/nm)']
+            scale_units = '1/nm'
+            offset = 0.5
+            name_prefix = 'k'
+        elif self.signal_type == 'IMG':
+            query = '`Acceleration Voltage (V)`==200000 & `Camera` == "Merlin" & `Nominal Magnification ()` == @mag'
+            calibration_matches = calibration_table.query(query)['Scale (nm)']
+            scale_units = 'nm'
+            offset = 0.0
+            name_prefix = ''
+        else:
+            raise ValueError('Could not determine signal type {signal_type} for {self!r}'.format(signal_type=signal_type, self=self))
 
-
+        if len(calibration_matches) > 1:
+            print('More than one calibration match was found ({n}). Using first match'.format(n=len(calibration_matches)))#Change to use most recent match
+        elif len(calibration_matches) <= 0:
+            print('No calibration match was found ({n})'.format(n=len(calibration_matches)))  # Change to use most recent match
+            return False
+        print(calibration_matches)
+        scale = calibration_matches.iloc[0]
+        print(scale)
+        self.data.axes_manager[0].scale = float(scale)
+        self.data.axes_manager[1].scale = float(scale)
+        self.data.axes_manager[0].units = scale_units
+        self.data.axes_manager[1].units = scale_units
+        self.data.axes_manager[0].offset = offset*self.data.axes_manager[0].size*self.data.axes_manager[0].scale
+        self.data.axes_manager[1].offset = offset * self.data.axes_manager[1].size * self.data.axes_manager[1].scale
+        self.data.axes_manager[0].name = '{prefix}x'.format(prefix=name_prefix)
+        self.data.axes_manager[1].name = '{prefix}y'.format(prefix=name_prefix)
+        return True
 
 class MainWindow(QtWidgets.QMainWindow):
     data_root = Path(r'C:\Users\emilc\OneDrive - NTNU\NORTEM\Merlin')
@@ -235,6 +300,7 @@ class mibConverterModel(QObject):
         super(mibConverterModel, self).__init__(*args, **kwargs)
         self.directory = None
         self.files = None
+        self.calibration_table = pd.read_excel(str(Path(__file__).parent / '../../Calibrations.xlsx'), engine='openpyxl')
 
     def set_directory(self, directory):
         """
@@ -288,11 +354,12 @@ class mibConverterModel(QObject):
         self.files = {}
         for filenumber, filename in enumerate(filenames):
             self.files.update({filenumber: MIBDataFile(filename, parent=self.parent())})
+            self.files[filenumber].calibrate(self.calibration_table)
         self.filesLoaded.emit()
         self.filesLoaded[dict].emit(self.files)
         self.filesLoaded[int].emit(len(self.files))
 
-    def convert_files(self, formats):
+    def convert_files(self, formats, overwrite=True):
         """
         Converts the files into the given file formats
         :param formats: The file formats to convert the files into
@@ -310,7 +377,7 @@ class mibConverterModel(QObject):
             for file_number in self.files:
                 file = self.files[file_number]
                 print('Converting file {file_number}: "{name}"'.format(file_number=file_number, name=file.name))
-                file.save(formats)
+                file.save(formats, overwrite=overwrite)
                 converted_files += 1
         else:
             raise FileError('{self!r} has no files to convert'.format(self=self))
@@ -337,7 +404,7 @@ class mibConverterController(object):
         self._model.filesLoaded[dict].connect(self._view.refreshFileList)
         self._view.convertButton.clicked.connect(lambda: self._model.convert_files(
             [checkbox.text() for checkbox in self._view.conversionFormats.findChildren(QtWidgets.QCheckBox) if
-             checkbox.isChecked()]))
+             checkbox.isChecked()], overwrite=self._view.overwriteCheckBox.isChecked()))
 
     def browse_directory(self):
         directory = self._view.browseDirectory()
@@ -394,9 +461,15 @@ class PlotWindow(QtWidgets.QDialog):
         units = image.axes_manager[0].units
         scale_bar_length = self.scale_bar_sizes[
             np.argmin(np.abs(self.scale_bar_sizes - self.scale_bar_fraction * size_x * scale_x))]
-        if scale_bar_length < 0:
+        if scale_bar_length < 1:
             if scale_bar_length < 0.1:
-                scalebar_label = '{scale_bar_length:.2f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+                if scale_bar_length < 0.01:
+                    if scale_bar_length < 0.001:
+                        scalebar_label = '{scale_bar_length} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+                    else:
+                        scalebar_label = '{scale_bar_length:.3f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+                else:
+                    scalebar_label = '{scale_bar_length:.2f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
             else:
                 scalebar_label = '{scale_bar_length:.1f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
         else:
