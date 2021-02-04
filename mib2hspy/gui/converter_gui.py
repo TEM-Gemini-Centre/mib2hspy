@@ -56,19 +56,36 @@ class MIBDataFile(QObject):
         split_name = self.name.split('_')
         scale = 0
         units = 'cm'
-        for part in split_name:
-            if 'kx' in part:
-                scale = float(part.replace('kx', ''))
-                units = 'kx'
-            if 'Mx' in part:
-                scale = float(part.replace('Mx', ''))
-                units = 'Mx'
-            if 'cm' in part:
-                scale = float(part.replace('cm', ''))
-                units = 'cm'
-            if 'mm' in part:
-                scale = float(part.replace('mm', ''))
-                units = 'mm'
+        try:
+            for part in split_name:
+                if 'kx' in part or 'Mx' in part:
+                    if 'kx' in part:
+                        units = 'kx'
+                    elif 'Mx' in part:
+                        units = 'Mx'
+                    else:
+                        units = 'x'
+                    part = part.replace('Mx', '')
+                    part = part.replace('kx', '')
+                    part = part.replace('x', '')
+                    part = part.replace('MAG1', '')
+                    part = part.replace('MAG', '')
+                    part = part.replace('SAMAG', '')
+                    scale = float(part)
+                else:
+                    if 'cm' in part or 'mm' in part:
+                        if 'cm' in part:
+                            units = 'cm'
+                        elif 'mm' in part:
+                            units = 'mm'
+                        part = part.replace('cm', '')
+                        part = part.replace('mm', '')
+                        part = part.replace('CL', '')
+                        part = part.replace('cl', '')
+                        scale = float(part)
+        except ValueError as e:
+            scale = 0
+            units = 'cm'
 
         # Create scale widget
         self.scale_widget = QtWidgets.QDoubleSpinBox(parent=self.parent())
