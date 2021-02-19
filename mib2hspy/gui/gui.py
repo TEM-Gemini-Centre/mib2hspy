@@ -954,27 +954,36 @@ class mib2hspyController(object):
         """Get the calibration value from a file or from input in the GUI"""
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`Nominal Cameralength (cm)` == {parameters.cameralength.nominal_value}".format(
-                parameters=parameters)
-            return self.get_calibration('Cameralength (cm)', query)
+            if isnan(parameters.cameralength.nominal_value):
+                return nan
+            else:
+                query = "`Nominal Cameralength (cm)` == {parameters.cameralength.nominal_value}".format(
+                    parameters=parameters)
+                return self.get_calibration('Cameralength (cm)', query)
         else:
             return self._view.cameraLengthSpinBox.value()
 
     def get_magnification_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`Nominal Magnification ()` == {parameters.magnification.nominal_value} & `Mag mode` == '{parameters.mag_mode.value}'".format(
-                parameters=parameters)
-            return self.get_calibration('Magnification ()', query)
+            if isnan(parameters.magnification.nominal_value) or parameters.mag_mode.value == '':
+                return nan
+            else:
+                query = "`Nominal Magnification ()` == {parameters.magnification.nominal_value} & `Mag mode` == '{parameters.mag_mode.value}'".format(
+                    parameters=parameters)
+                return self.get_calibration('Magnification ()', query)
         else:
             return self._view.magnificationSpinBox.value()
 
     def get_image_scale_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`Nominal Magnification ()` == {parameters.magnification.nominal_value} & `Mag mode` == '{parameters.mag_mode.value}'".format(
-                parameters=parameters)
-            return self.get_calibration('Scale (nm)', query)
+            if isnan(parameters.magnification.nominal_value) or parameters.mag_mode.value == '':
+                return nan
+            else:
+                query = "`Nominal Magnification ()` == {parameters.magnification.nominal_value} & `Mag mode` == '{parameters.mag_mode.value}'".format(
+                    parameters=parameters)
+                return self.get_calibration('Scale (nm)', query)
         else:
             if self._view.scaleSelector.currentText() == 'Å':
                 return self._view.scaleSpinBox.value()
@@ -984,9 +993,12 @@ class mib2hspyController(object):
     def get_diffraction_scale_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            query = "`Nominal Cameralength (cm)` == {parameters.cameralength.nominal_value}".format(
-                parameters=parameters)
-            return self.get_calibration('Scale (1/Å)', query)
+            if isnan(parameters.cameralength.nominal_value):
+                return nan
+            else:
+                query = "`Nominal Cameralength (cm)` == {parameters.cameralength.nominal_value}".format(
+                    parameters=parameters)
+                return self.get_calibration('Scale (1/Å)', query)
         else:
             if self._view.scaleSelector.currentText() == '1/Å':
                 return self._view.scaleSpinBox.value()
@@ -996,34 +1008,49 @@ class mib2hspyController(object):
     def get_x_scan_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            if parameters.mode.value == 'STEM':
-                query = "`Mode` == '{parameters.mode.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                    parameters=parameters)
+            if isnan(parameters.scan_step_x.nominal_value):
+                return nan
             else:
-                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                    parameters=parameters)
-            return self.get_calibration('Step Size X (nm)', query)
+                if parameters.mode.value == 'STEM':
+                    query = "`Mode` == '{parameters.mode.value}' & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                        parameters=parameters)
+                else:
+                    if isnan(parameters.alpha.value):
+                        return nan
+                    else:
+                        query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Step Size X (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                            parameters=parameters)
+                    return self.get_calibration('Step Size X (nm)', query)
         else:
             return self._view.stepSizeXSpinBox.value()
 
     def get_y_scan_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
-            if parameters.mode.value == 'STEM':
-                query = "`Mode` == '{parameters.mode.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                    parameters=parameters)
+            if isnan(parameters.scan_step_y.nominal_value):
+                return nan
             else:
-                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == '{parameters.alpha.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
-                    parameters=parameters)
-            return self.get_calibration('Step Size Y (nm)', query)
+                if parameters.mode.value == 'STEM':
+                    query = "`Mode` == '{parameters.mode.value}' & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                        parameters=parameters)
+                else:
+                    if isnan(parameters.alpha.value):
+                        return nan
+                    else:
+                        query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Step Size Y (nm)` == {parameters.scan_step_x.nominal_value}".format(
+                            parameters=parameters)
+                return self.get_calibration('Step Size Y (nm)', query)
         else:
             return self._view.stepSizeYSpinBox.value()
 
     def get_image_rotation_calibration(self):
         parameters = self._parameter_controller.get_model()
-        query = "`Mag Mode` == '{parameters.mag_mode.value}' & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
-            parameters=parameters)
-        return self.get_calibration('Image Rotation (deg)', query)
+        if isnan(parameters.magnification.nominal_value):
+            return nan
+        else:
+            query = "`Mag Mode` == '{parameters.mag_mode.value}' & `Nominal Mag` == {parameters.magnification.nominal_value}".format(
+                parameters=parameters)
+            return self.get_calibration('Image Rotation (deg)', query)
 
     def get_scan_rotation_calibration(self):
         parameters = self._parameter_controller.get_model()
@@ -1031,8 +1058,11 @@ class mib2hspyController(object):
             query = "`Mode` == '{parameters.mode.value}'".format(
                 parameters=parameters)
         else:
-            query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value}".format(
-                parameters=parameters)
+            if isnan(parameters.alpha.value):
+                return nan
+            else:
+                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value}".format(
+                    parameters=parameters)
         return self.get_calibration('Scan Rotation (deg)', query)
 
     def get_precession_calibration(self):
@@ -1044,9 +1074,12 @@ class mib2hspyController(object):
             if parameters.mode.value == 'STEM':
                 return nan
             else:
-                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
-                    parameters=parameters)
-                return self.get_calibration('Precession Angle (deg)', query)
+                if isnan(parameters.alpha.value) or isnan(parameters.rocking_angle.nominal_value):
+                    return nan
+                else:
+                    query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
+                        parameters=parameters)
+                    return self.get_calibration('Precession Angle (deg)', query)
         else:
             return self._view.rockingAngleSpinBox.value()
 
@@ -1055,35 +1088,53 @@ class mib2hspyController(object):
         if parameters.mode.value == 'STEM':
             return nan
         else:
-            query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
-                parameters=parameters)
-            return self.get_calibration('Precession Eccentricity', query)
+            if isnan(parameters.alpha.value) or isnan(parameters.rocking_angle.nominal_value):
+                return nan
+            else:
+                query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Precession Angle (deg)` == {parameters.rocking_angle.nominal_value}".format(
+                    parameters=parameters)
+                return self.get_calibration('Precession Eccentricity', query)
 
     def get_condenser_aperture_calibration(self):
         parameters = self._parameter_controller.get_model()
-        query = "`Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
-            parameters=parameters)
-        return self.get_calibration('Condenser Aperture (um)', query)
+        if isnan(parameters.condenser_aperture.value):
+            return nan
+        else:
+            query = "`Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+                parameters=parameters)
+            return self.get_calibration('Condenser Aperture (um)', query)
 
     def get_convergence_angle_calibration(self):
         parameters = self._parameter_controller.get_model()
-        if parameters.mode == 'STEM':
-            query = "`Mode` == '{parameters.mode.value}' & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
-                parameters=parameters)
+        if isnan(parameters.condenser_aperture.value):
+            return nan
         else:
-            query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
-                parameters=parameters)
-        return self.get_calibration('Convergence Angle (mrad)', query)
+            if parameters.mode == 'STEM':
+                query = "`Mode` == '{parameters.mode.value}' & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+                    parameters=parameters)
+            else:
+                if isnan(parameters.alpha.value):
+                    return nan
+                else:
+                    query = "`Mode` == '{parameters.mode.value}' & `Alpha` == {parameters.alpha.value} & `Nominal Condenser Aperture (um)` == {parameters.condenser_aperture.value}".format(
+                        parameters=parameters)
+            return self.get_calibration('Convergence Angle (mrad)', query)
 
     def get_spotsize_calibration(self):
         if self._view.useCalibrationFileRadioButton.isChecked():
             parameters = self._parameter_controller.get_model()
             if parameters.mode == 'TEM':
-                query = "`Spot` == {parameters.spot.value}".format(
-                    parameters=parameters)
+                if isnan(parameters.spot.value):
+                    return nan
+                else:
+                    query = "`Spot` == {parameters.spot.value}".format(
+                        parameters=parameters)
             else:
-                query = "`Nominal Spotsize (nm)` == {parameters.spotsize.nominal_value}".format(
-                    parameters=parameters)
+                if isnan(parameters.spotsize.nominal_value):
+                    return nan
+                else:
+                    query = "`Nominal Spotsize (nm)` == {parameters.spotsize.nominal_value}".format(
+                        parameters=parameters)
             return self.get_calibration('Spotsize (nm)', query)
         else:
             return self._view.spotSizeSpinBox.value()
@@ -1547,7 +1598,6 @@ def main(logfile=None):
     # sys.stdout = LogStream(logging.getLogger(), logging.DEBUG)
     # sys.stderr = LogStream(logging.getLogger(), logging.ERROR)
 
-    logging.debug('Hei')
 
     myqui = QtWidgets.QApplication(sys.argv)
 
