@@ -128,9 +128,13 @@ class MIBDataFile(QObject):
         return hash(self.path)
 
     def load(self):
-        self.data = pxm.load_mib(str(self.path))
-        if len(self.data) == 1:
-            self.data = pxm.ElectronDiffraction2D(self.data.inav[0])  # extract single frame if only one dimension!
+        data = pxm.load_mib(str(self.path), lazy = True)
+        #If the data is a stack, keep it as lazy. If it is a single image, extract the image and load it into memory
+        if len(data) == 1:
+            data.compute() #Load data into memory
+            self.data = pxm.ElectronDiffraction2D(data.inav[0])  # extract single frame if only one dimension!
+        else:
+            self.data = data
         if self.path.with_suffix('.hdr').exists():
             self.header = MedipixHDRcontent(self.path.with_suffix('.hdr'))
         else:
@@ -138,20 +142,23 @@ class MIBDataFile(QObject):
         self.dimensions = len(self.data)
 
     def save(self, extensions, overwrite=True):
-        if not isinstance(extensions, (list, tuple)):
-            extensions = list(extensions)
+        if len(self.data) == 1:
+            if not isinstance(extensions, (list, tuple)):
+                extensions = list(extensions)
 
-        for extension in extensions:
-            if extension in self.plot_extensions:
-                if self.signal_type == 'DIFF':
-                    self.data.plot(norm='log')
+            for extension in extensions:
+                if extension in self.plot_extensions:
+                    if self.signal_type == 'DIFF':
+                        self.data.plot(norm='log')
+                    else:
+                        self.data.plot()
+                    fig = plt.gcf()
+                    fig.savefig(self.path.with_suffix(extension))
+                    plt.close(fig)
                 else:
-                    self.data.plot()
-                fig = plt.gcf()
-                fig.savefig(self.path.with_suffix(extension))
-                plt.close(fig)
-            else:
-                self.data.save(str(self.path.with_suffix(extension)), overwrite=overwrite)
+                    self.data.save(str(self.path.with_suffix(extension)), overwrite=overwrite)
+        else:
+            print('Data {self} is a stack - did not convert data.'.format(self=self))
 
     def plot(self):
         plot_window = PlotWindow(self.parent())
