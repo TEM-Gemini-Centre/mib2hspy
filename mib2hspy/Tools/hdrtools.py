@@ -161,7 +161,7 @@ class MedipixHDRcontent(object):
                         except IndexError as e:
                             raise e
         else:
-            msg = 'HDR file "{self.filename}" does not exist. Please set correct HDR filename before loading content'.format(
+            msg = 'HDR file "{self.filename}" does not exist. Please set correct HDR directory before loading content'.format(
                 self=self)
             raise FileNotFoundError(msg)
 
