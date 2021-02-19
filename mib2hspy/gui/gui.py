@@ -6,7 +6,8 @@ from PyQt5 import uic, QtWidgets
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QObject
 import pyxem as pxm
 import pandas as pd
-from numpy import nan
+from numpy import nan, isnan
+from math import sqrt
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -942,7 +943,7 @@ class mib2hspyController(object):
             else:
                 valid_calibration = nan
         finally:
-            logging.getLogger().info(
+            logging.getLogger().debug(
                 'Result from calibration query "{query}"\n\t{name}={result}'.format(query=query, name=name,
                                                                                     result=valid_calibration))
             # logging.getLogger().info(
@@ -1153,9 +1154,17 @@ class mib2hspyController(object):
         if self._model.data is None:
             raise TypeError
 
-        N = len(self._model.data)
-        nx = int(self._model.hdr.frames_per_trigger)
-        ny = int(N / nx)
+        n = len(self._model.data)
+        if self._model.hdr.frames_per_trigger == 1:
+            # frame triggering
+            if sqrt(n) % 1:
+                nx = 1
+            else:
+                nx = int(sqrt(n))
+        else:
+            # Line triggering
+            nx = int(self._model.hdr.frames_per_trigger)
+        ny = int(n / nx)
         self._view.stepsXSpinBox.setValue(nx)
         self._view.stepsYSpinBox.setValue(ny)
         logging.getLogger().info('Set scan sizes based on header file successfully')
@@ -1417,18 +1426,33 @@ class mib2hspyController(object):
             scale = 1
         for ax, name in zip(sig_axes, ('kx', 'ky')):
             if ax is not None:
-                signal.axes_manager[ax].scale = scale
-                signal.axes_manager[ax].units = units
                 signal.axes_manager[ax].name = name
+                if isnan(scale):
+                    signal.axes_manager[ax].scale = 1
+                    signal.axes_manager[ax].units = ''
+                else:
+                    signal.axes_manager[ax].scale = scale
+                    signal.axes_manager[ax].units = units
 
         if nav_axes[0] is not None:
-            signal.axes_manager[nav_axes[0]].scale = self.get_x_scan_calibration()
-            signal.axes_manager[nav_axes[0]].units = 'nm'
             signal.axes_manager[nav_axes[0]].name = 'x'
+            calibration = self.get_x_scan_calibration()
+            if isnan(calibration):
+                signal.axes_manager[nav_axes[0]].scale = 1
+                signal.axes_manager[nav_axes[0]].units = ''
+            else:
+                signal.axes_manager[nav_axes[0]].scale = calibration
+                signal.axes_manager[nav_axes[0]].units = 'nm'
+
         if nav_axes[1] is not None:
-            signal.axes_manager[nav_axes[1]].scale = self.get_y_scan_calibration()
-            signal.axes_manager[nav_axes[1]].units = 'nm'
             signal.axes_manager[nav_axes[1]].name = 'y'
+            calibration = self.get_y_scan_calibration()
+            if isnan(calibration):
+                signal.axes_manager[nav_axes[1]].scale = 1
+                signal.axes_manager[nav_axes[1]].units = ''
+            else:
+                signal.axes_manager[nav_axes[1]].scale = calibration
+                signal.axes_manager[nav_axes[1]].units = 'nm'
 
     def prepare_data(self, update_indicators=True):
         """
