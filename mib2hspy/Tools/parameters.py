@@ -553,7 +553,8 @@ class MicroscopeParameters(object):
                  microscope=Microscope('None')
                  ):
         """
-        Creates a microscope object.
+        Creates an object for controlling microscope parameters.
+
         :param acceleration_voltage: The acceleration voltage of the microscope in kV
         :type acceleration_voltage: AccelerationVoltage
         :param mode: The mode setting of the microscope (e.g. TEM, STEM, NBD, CBD, etc).
