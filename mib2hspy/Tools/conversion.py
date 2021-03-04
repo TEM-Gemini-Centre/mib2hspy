@@ -23,8 +23,10 @@ class HDRError(Error):
 class ReadError(Error):
     pass
 
+
 class CalibrationError(Error):
     pass
+
 
 class Converter(object):
     """
@@ -44,11 +46,11 @@ class Converter(object):
         self.data_path = Path(data_path)
         self.data = None
         self.hdr = None
-        self.calibrationfile = None
-        # self.read_mib(self.data_path)
+        self.calibrationtable = None
 
         if not isinstance(microscope_parameters, MicroscopeParameters):
-            raise TypeError('Microscope parameters must be given as a MicroscopeParameters object, not {!r}'.format(microscope_parameters))
+            raise TypeError('Microscope parameters must be given as a MicroscopeParameters object, not {!r}'.format(
+                microscope_parameters))
         self.microscope_parameters = microscope_parameters
 
     def read_mib(self, data_path=None):
@@ -102,16 +104,22 @@ class Converter(object):
         else:
             return nan
 
-    def calibrate(self, calibrationfile=None, print_results=False):
+    def calibrate(self, calibrationtable=None, print_results=False):
         """
         Calibrates the dataset based on a calibration file.
+
+        :param calibrationtable: Calibration table to use for calibrating the data.
+        :param print_results: Whether to print the results or not. Default is False
+        :type calibrationfile: Union[None, str, Path]
+        :type print_results: bool
         :return:
         """
-        if calibrationfile is None:
-            raise CalibrationError('No calibration file set.')
+        if calibrationtable is None:
+            raise CalibrationError('No calibrationtable set.')
         else:
-            self.calibrationfile = Path(calibrationfile)
-
-        calibrations = pd.read_excel(self.calibrationfile, engine='openpyxl')
-
-        self.microscope_parameters.set_values_from_calibrationtable(calibrations, print_results=print_results)
+            if isinstance(calibrationtable, pd.DataFrame):
+                self.calibrationtable = calibrationtable
+            else:
+                raise TypeError('Expected calibration table to be of type pandas.DataFrame, not {table!r}'.format(
+                    table=calibrationtable))
+        self.microscope_parameters.set_values_from_calibrationtable(calibrationtable, print_results=print_results)
