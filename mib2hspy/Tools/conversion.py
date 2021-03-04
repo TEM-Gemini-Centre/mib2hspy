@@ -2,7 +2,10 @@ from pathlib import Path
 import hyperspy.api as hs
 import pyxem as pxm
 import numpy as np
+import pandas as pd
 from .hdrtools import MedipixHDRcontent
+from .parameters import MicroscopeParameters
+from math import nan, isnan
 
 
 class Error(Exception):
@@ -20,22 +23,33 @@ class HDRError(Error):
 class ReadError(Error):
     pass
 
+class CalibrationError(Error):
+    pass
 
 class Converter(object):
     """
     A converter object that converts a given .mib file into a .hspy file.
     """
 
-    def __init__(self, data_path=None):
+    def __init__(self, data_path=None, microscope_parameters=MicroscopeParameters()):
         """
         Initialize a Converter object
+
+        :param data_path: Path to the data to be converted
+        :param microscope_parameters: microscope parameters to use as a basis for metadata and calibrations.
+        :type data_path: Union[str, Path]
+        :type microscope_parameters: MicroscopeParameters
         """
 
         self.data_path = Path(data_path)
         self.data = None
         self.hdr = None
         self.calibrationfile = None
-        self.read_mib(self.data_path)
+        # self.read_mib(self.data_path)
+
+        if not isinstance(microscope_parameters, MicroscopeParameters):
+            raise TypeError('Microscope parameters must be given as a MicroscopeParameters object, not {!r}'.format(microscope_parameters))
+        self.microscope_parameters = microscope_parameters
 
     def read_mib(self, data_path=None):
         """
@@ -77,4 +91,27 @@ class Converter(object):
                     'File "{self.data_path}" was not loaded successfully:\nData: {self.data}\n HDR: {self.hdr}'.format(
                         self=self))
 
-    def calibrate(self):
+    def get_max_value(self):
+        """
+        Get the maximum value of the dataset.
+        :return:
+        """
+        if self.data is not None:
+            max_value = self.data.max(axis=[0, 1, 2])
+            return int(max_value.data[0])
+        else:
+            return nan
+
+    def calibrate(self, calibrationfile=None, print_results=False):
+        """
+        Calibrates the dataset based on a calibration file.
+        :return:
+        """
+        if calibrationfile is None:
+            raise CalibrationError('No calibration file set.')
+        else:
+            self.calibrationfile = Path(calibrationfile)
+
+        calibrations = pd.read_excel(self.calibrationfile, engine='openpyxl')
+
+        self.microscope_parameters.set_values_from_calibrationtable(calibrations, print_results=print_results)
