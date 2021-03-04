@@ -3,7 +3,17 @@ from datetime import datetime, date
 from tabulate import tabulate
 import pandas as pd
 import numpy as np
-from numpy import nan, isnan
+from math import nan, isnan, sqrt
+from string import Formatter
+from pandas.core.computation.ops import UndefinedVariableError
+
+
+class Error(Exception):
+    pass
+
+
+class CalibrationError(Error):
+    pass
 
 
 class Parameter(object):
@@ -77,7 +87,10 @@ class Parameter(object):
             self=self)
 
     def __format__(self, format_spec):
-        return '{self.value:{f}}'.format(self=self, f=format_spec)
+        if format_spec == 'q':
+            return QueryFormatter().format('{self!q}'.format(self=self))
+        else:
+            return '{self.value:{f}}'.format(self=self, f=format_spec)
 
     def __float__(self):
         return float(self.value)
@@ -159,6 +172,137 @@ class Parameter(object):
         return {'{self.name}'.format(self=self): {'Value': self.value, 'Units': self.units}}
 
 
+class QueryFormatter(Formatter):
+    """
+    Formatter for creating query strings from parameters
+    """
+
+    def convert_field(self, value, conversion):
+        """
+        Overloaded convert_field method.
+
+        Converts the value (returned by get_field()) given a conversion type (as in the tuple returned by the parse() method). The default version understands ‘s’ (str), ‘r’ (repr) and ‘a’ (ascii) conversion types.
+
+        :param value: Value to be formatted
+        :param conversion: Conversion field
+        :type value: Any
+        :type conversion: str
+        :return: formatted string based on conversion string
+        """
+        if conversion == 'q':
+            if isinstance(value, CalibratedParameter):
+                if isinstance(value.nominal_value, str):
+                    return '`Nominal {value.name} ({value.units})` == "{value.nominal_value}"'.format(value=value)
+                else:
+                    if isnan(value.nominal_value):
+                        return '`Nominal {value.name} ({value.units})` == @{value.nominal_value}'.format(value=value)
+                    else:
+                        return '`Nominal {value.name} ({value.units})` == {value.nominal_value}'.format(value=value)
+            elif isinstance(value, Parameter):
+                #Handle empty units specially for Parameters.
+                if value.units == '':
+                    units = ''
+                else:
+                    units = ' ({value.units})'.format(value=value)
+                if isinstance(value.value, str):
+                    return '`{value.name}{units}` == "{value.value}"'.format(value=value, units=units)
+                else:
+                    if isnan(value.value):
+                        return '`{value.name}{units}` == @{value.value}'.format(value=value, units=units)
+                    else:
+                        return '`{value.name}{units}` == {value.value}'.format(value=value, units=units)
+            else:
+                return super().convert_field(value, conversion)
+        else:
+            return super().convert_field(value, conversion)
+
+
+class CalibrationQueryFormatter(QueryFormatter):
+    """
+    A class for creating calibration queries
+    """
+
+    def __init__(self, microscope_parameters):
+        """
+        Create a formatter for querying calibrations.
+
+        :param microscope_parameters: The microscope parameters to use when creating queries. Only values in these parameters may be converted/formatted as queries.
+        :type microscope_parameters: MicroscopeParameters
+        """
+        if not isinstance(microscope_parameters, MicroscopeParameters):
+            raise TypeError(
+                'Can only create calibration query objects for microscope parameters of type MicroscopeParameters, not {!r}'.format(
+                    microscope_parameters))
+        self.microscope_parameters = microscope_parameters
+        super(CalibrationQueryFormatter, self).__init__()
+
+    def __call__(self, value):
+        """
+        Creates a query for the requested value.
+
+        :param value: Value to create a query for
+        :type value: Parameter
+        :return: Query string to be used with pandas.DataFrame.query()
+        :rtype: str
+        """
+        return self.convert_field(value, 'q')
+
+    def convert_field(self, value, conversion):
+        """
+        Converts a field from a format string.
+
+        Creates a string suitable for querying a pandas.DataFrame for microscope calibrations for the value ig the conversion character is `"q"`, otherwise, the superclass convert_field method is called
+
+        :param value: The value to convert. If this is a value in the microscope parameters of this formatter, ta query is created, otherwise a standard conversion is performed.
+        :type value: Any
+        :param conversion: The conversion string. If given as "q", a query is created, otherwise a standard conversion is performed
+        :type conversion: str
+        :return: The converted field
+        :rtype: str
+        """
+        if conversion == 'q':
+            if not value in self.microscope_parameters:
+                raise ValueError(
+                    'Value {value!r} is not in {self.microscope_parameters!r}'.format(value=value, self=self))
+            if isinstance(value, Magnification):
+                return self.create_query(value, self.microscope_parameters.mode, self.microscope_parameters.mag_mode,
+                                         self.microscope_parameters.camera)
+            elif isinstance(value, Cameralength):
+                return self.create_query(value)
+            elif isinstance(value, SpotSize):
+                return self.create_query(value, self.microscope_parameters.mode,
+                                         self.microscope_parameters.condenser_aperture)
+            elif isinstance(value, CondenserAperture):
+                return self.create_query(value, self.microscope_parameters.magnification)
+            elif isinstance(value, ConvergenceAngle):
+                return self.create_query(value, self.microscope_parameters.condenser_aperture,
+                                         self.microscope_parameters.magnification, self.microscope_parameters.mode,
+                                         self.microscope_parameters.alpha)
+            elif isinstance(value, RockingAngle):
+                return self.create_query(value, self.microscope_parameters.mode, self.microscope_parameters.alpha)
+            elif isinstance(value, ScanStep):
+                if self.microscope_parameters.mode == 'STEM':
+                    return self.create_query(value, self.microscope_parameters.mode)
+                else:
+                    return self.create_query(value, self.microscope_parameters.mode, self.microscope_parameters.alpha)
+            else:
+                return super().convert_field(value, conversion)
+        else:
+            return super().convert_field(value, conversion)
+
+    def create_query(self, *args):
+        """
+        Creates a query for dataframes
+        :param args: Arbitrary number of required parameters to query for.
+        :return: A query string
+        :rtype: str
+        """
+        required_parameters = [self.microscope_parameters.acceleration_voltage, self.microscope_parameters.microscope]
+        parameters = [arg for arg in args]
+        [parameters.append(required_parameter) for required_parameter in required_parameters]
+        return ' & '.join([super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
+
+
 class CalibratedParameter(Parameter):
     """
     A calibrated parameter with a nominal value in addition to its calibrated value.
@@ -187,7 +331,10 @@ class CalibratedParameter(Parameter):
             self=self)
 
     def __format__(self, format_spec):
-        return '{self.value:{f}} ({self.nominal_value:{f}}) {self.units}'.format(self=self, f=format_spec)
+        if format_spec == 'q':
+            return QueryFormatter().format('{self!q}'.format(self=self))
+        else:
+            return '{self.value:{f}} ({self.nominal_value:{f}}) {self.units}'.format(self=self, f=format_spec)
 
     def nominal_value_is_defined(self):
         """
@@ -212,104 +359,271 @@ class CalibratedParameter(Parameter):
                     nomval=newvalue, self=self))
         self.nominal_value = newvalue
 
+    def set_value_from_calibrationtable(self, calibrationtable, query, print_result=False):
+        """
+        Sets the value of the parameter to a matching entry in a calibration table.
+
+        :param calibrationtable: The calibration table to search in. Must contain a column named "Nominal <name> (<units>)" and "<name> (<units>)" that matches the parameter name and units. The table will also be filtered with additional queries.
+        :param query: Additional queries to the calibration table, see pandas.DataFrame.query for more information.
+        :type calibrationtable: pandas.DataFrame
+        :type query: str
+        :return:
+        """
+        if not isinstance(calibrationtable, pd.DataFrame):
+            raise TypeError(
+                'Expected calibration table to be of type {expected_type}, not {wrong_type}\nGot: {calibrationtable!r}'.format(
+                    expected_type=pd.DataFrame, wrong_type=type(calibrationtable), calibrationtable=calibrationtable))
+        if not isinstance(query, str):
+            raise TypeError('Expected query to be of type {expected_type}, not {wrong_type}\nGot: {query!r}'.format(
+                expected_type=str, wrong_type=type(query), query=query))
+
+        query = query + ' & ' + QueryFormatter().convert_field(self, 'q')
+        try:
+            calibration_rows = calibrationtable.query(query)
+            key = '{self.name} ({self.units})'.format(self=self)
+            values = calibration_rows[key].values  # Get the actual values from the calibration rows.
+        except UndefinedVariableError:
+            print(
+                'Unable to query calibration table for \n"{query}"\ndue to missing (required) columns. Please check that the calibration file column headers for errors. Continuing without calibrating this value.\n'.format(
+                    query=query, table=calibrationtable))
+        except KeyError as e:
+            print('No column was found for {key} in \n{calibration_rows}.\nPlease check that the calibration file column headers for errors. Continuing withoug calibrating this value.\n'.format(key=key, calibration_rows=calibration_rows))
+        else:
+            if len(values) > 0:
+                if len(values) > 1:
+                    print('Multiple calibration rows fits with query "{query}".\nUsing last entry.\n'.format(query=query))
+                value = values[-1]
+            else:
+                print('No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(self=self, table=calibrationtable, query=query))
+                value = nan
+            if bool(print_result):
+                print('Result from query "{query}" to calibration table: {value!r}\n'.format(query=query,
+                                                                                                     table=calibrationtable,
+                                                                                                     value=value))
+            self.set_value(value)
+
     def as_dict(self):
         """Return calibrated parameter as a dictionary"""
         return {'{self.name}'.format(self=self): {'Nominal_value': self.nominal_value, 'Value': self.value,
                                                   'Units': self.units}}
 
 
-class Microscope(object):
+class AccelerationVoltage(Parameter):
+    def __init__(self, acceleration_voltage):
+        """
+        Create acceleration voltage object.
+        :param acceleration_voltage: The acceleration voltage in V
+        :type acceleration_voltage: float
+        :return:
+        """
+        super(AccelerationVoltage, self).__init__('Acceleration Voltage', acceleration_voltage, 'V')
+
+    def wavelength(self, m0=9.1093837015 * 1e-31, e=1.60217662 * 1e-19, h=6.62607004 * 1e-34, c=299792458):
+        """
+        Return the wavelength of an accelerated electron in [Å]
+
+        :param c: Speed of light in vacuum [m/s]
+        :param h: Planck' constant [m^2 kg/s]
+        :param e: Elementary charge of electorn [C]
+        :param m0: Rest mass of electron [kg]
+        :type m0: float
+        :type e: float
+        :type h: float
+        :type c: float
+        :returns: wavelength of electron in Å
+        :rtype: float
+        """
+        V = self.value
+        return h / sqrt(2 * m0 * e * V * (1.0 + (e * V / (2 * m0 * c ** 2)))) * 1E10
+
+
+class Mode(Parameter):
+    def __init__(self, mode):
+        if not isinstance(mode, str):
+            raise TypeError('Mode must be given as a string, not {!r}'.format(mode))
+        super(Mode, self).__init__('Mode', mode, '')
+
+
+class Alpha(Parameter):
+    def __init__(self, alpha):
+        if not isinstance(alpha, float):
+            raise TypeError('Alpha must be given as a float, not {!r}'.format(alpha))
+        super(Alpha, self).__init__('Alpha', alpha, '')
+
+
+class MagMode(Parameter):
+    def __init__(self, mag_mode):
+        if not isinstance(mag_mode, str):
+            raise TypeError('Magnification mode must be given as a string, not {!r}'.format(mag_mode))
+        super(MagMode, self).__init__('Mag mode', mag_mode, '')
+
+
+class Magnification(CalibratedParameter):
+    def __init__(self, actual_magnification, nominal_magnification):
+        super(Magnification, self).__init__('Magnification', actual_magnification, '', nominal_magnification)
+
+
+class Cameralength(CalibratedParameter):
+    def __init__(self, actual_cameralength, nominal_cameralength, units='cm'):
+        super(Cameralength, self).__init__('Cameralength', actual_cameralength, units, nominal_cameralength)
+
+
+class Spot(Parameter):
+    def __init__(self, spot):
+        super(Spot, self).__init__('Spot', spot, '')
+
+
+class SpotSize(CalibratedParameter):
+    def __init__(self, actual_spotsize, nominal_spotsize, units='nm'):
+        super(SpotSize, self).__init__('Spotsize', actual_spotsize, units, nominal_spotsize)
+
+
+class CondenserAperture(CalibratedParameter):
+    def __init__(self, actual_aperture_size, nominal_aperture_size, units='um'):
+        super(CondenserAperture, self).__init__('Condenser aperture', actual_aperture_size, units,
+                                                nominal_aperture_size)
+
+
+class ConvergenceAngle(CalibratedParameter):
+    def __init__(self, actual_angle, nominal_angle, units='mrad'):
+        super(ConvergenceAngle, self).__init__('Convergence angle', actual_angle, units, nominal_angle)
+
+
+class RockingAngle(CalibratedParameter):
+    def __init__(self, actual_angle, nominal_angle, units='deg'):
+        super(RockingAngle, self).__init__('Rocking angle', actual_angle, units, nominal_angle)
+
+
+class RockingFrequency(Parameter):
+    def __init__(self, frequency):
+        super(RockingFrequency, self).__init__('Rocking frequency', frequency, 'Hz')
+
+
+class ScanStep(CalibratedParameter):
+    def __init__(self, actual_step, nominal_step, direction, units='nm'):
+        direction = str(direction)
+        if len(direction) > 1:
+            print('Direction for scan step is specified as a string with {n} characters: {direction}'.format(
+                n=len(direction), direction=direction))
+        else:
+            direction = direction.capitalize()
+
+        super(ScanStep, self).__init__('Step {direction!s}'.format(direction=direction), actual_step, units,
+                                       nominal_step)
+        self.direction = direction
+
+
+class AcquisitionDate(Parameter):
+    def __init__(self, date):
+        super(AcquisitionDate, self).__init__('Acquisition Date', date, '')
+
+
+class Camera(Parameter):
+    def __init__(self, camera):
+        if not isinstance(camera, str):
+            raise TypeError('Camera must be given as a string, not {!r}'.format(camera))
+        super(Camera, self).__init__('Camera', camera, '')
+
+
+class Microscope(Parameter):
+    def __init__(self, microscope):
+        if not isinstance(microscope, str):
+            raise TypeError('Microscope must be given as a string, not {!r}'.format(microscope))
+        super(Microscope, self).__init__('Microscope', microscope, '')
+
+
+class MicroscopeParameters(object):
     def __init__(self,
-                 acceleration_voltage=Parameter('Acceleration Voltage', nan, 'V'),
-                 mode=Parameter('Mode', 'None', ''),
-                 alpha=Parameter('Alpha', nan, ''),
-                 mag_mode=Parameter('Magnification Mode', 'None', ''),
-                 magnification=CalibratedParameter('Magnification', nan, '', nan),
-                 cameralength=CalibratedParameter('Camera length', nan, 'cm', nan),
-                 spot=Parameter('Spot', nan, ''),
-                 spotsize=CalibratedParameter('Spotsize', nan, 'nm', nan),
-                 condenser_aperture=CalibratedParameter('Condenser aperture', nan, 'um', nan),
-                 convergence_angle=CalibratedParameter('Convergence angle', nan, 'mrad', nan),
-                 rocking_angle=CalibratedParameter('Rocking angle', nan, 'deg', nan),
-                 rocking_frequency=Parameter('Rocking frequency', nan, 'Hz'),
-                 scan_step_x=CalibratedParameter('Step X', nan, 'nm', nan),
-                 scan_step_y=CalibratedParameter('Step Y', nan, 'nm', nan),
-                 acquisition_date=Parameter('Acquisition Date', 'None', ''),
-                 camera=Parameter('Camera', 'None', ''),
-                 microscope_name=Parameter('Microscope', 'None', '')
+                 acceleration_voltage=AccelerationVoltage(nan),
+                 mode=Mode('None'),
+                 alpha=Alpha(nan),
+                 mag_mode=MagMode('None'),
+                 magnification=Magnification(nan, nan),
+                 cameralength=Cameralength(nan, nan),
+                 spot=Spot(nan),
+                 spotsize=SpotSize(nan, nan),
+                 condenser_aperture=CondenserAperture(nan, nan),
+                 convergence_angle=ConvergenceAngle(nan, nan),
+                 rocking_angle=RockingAngle(nan, nan),
+                 rocking_frequency=RockingFrequency(nan),
+                 scan_step_x=ScanStep(nan, nan, 'X'),
+                 scan_step_y=ScanStep(nan, nan, 'Y'),
+                 acquisition_date=AcquisitionDate('None'),
+                 camera=Camera('None'),
+                 microscope=Microscope('None')
                  ):
         """
         Creates a microscope object.
-        :param acceleration_voltage: The acceleartion voltage of the microscope in kV
-        :type acceleration_voltage: Parameter
+        :param acceleration_voltage: The acceleration voltage of the microscope in kV
+        :type acceleration_voltage: AccelerationVoltage
         :param mode: The mode setting of the microscope (e.g. TEM, STEM, NBD, CBD, etc).
-        :type mode: Parameter
+        :type mode: Mode
         :param alpha: The alpha setting of the microscope (condenser minilens setting)
-        :type alpha: Parameter
+        :type alpha: Alpha
         :param mag_mode: The magnification mode of the microscope (MAG, SAMAG, LM, etc)
-        :type mag_mode: Parameter
+        :type mag_mode: MagMode
         :param magnification: The magnification of the microscope.
-        :type magnification: CalibratedParameter
+        :type magnification: Magnification
         :param cameralength: The cameralength of the microscope in cm
-        :type cameralength: CalibratedParameter
+        :type cameralength: Cameralength
         :param spot: The spot setting of the microscope
-        :type spot: Parameter
+        :type spot: Spot
         :param spotsize: The spotsize of the microscope.
-        :type spotsize: CalibratedParameter
+        :type spotsize: SpotSize
         :param condenser_aperture: The condenser aperature of the microscope in microns.
-        :type condenser_aperture: CalibratedParameter
+        :type condenser_aperture: CondenserAperture
         :param convergence_angle: The convergence angle of the microscope in mrad.
-        :type convergence_angle: CalibratedParameter
+        :type convergence_angle: ConvergenceAngle
         :param rocking_angle: The rocking (precession) angle of the microscope in degrees.
-        :type rocking_angle: CalibratedParameter
+        :type rocking_angle: RockingAngle
         :param rocking_frequency: The rocking (precession) angle of the microscope in Hz.
-        :type rocking_frequency: Parameter
+        :type rocking_frequency: RockingFrequency
         :param scan_step_x: The scan step size in the x-direction in nm
-        :type scan_step_x: CalibratedParameter
+        :type scan_step_x: ScanStep
         :param scan_step_y: The scan step size in the y-direction in nm
-        :type scan_step_y: CalibratedParameter
+        :type scan_step_y: ScanStep
         :param acquisition_date: The date of acquisition
-        :type acquisition_date: Parameter
+        :type acquisition_date: AcquisitionDate
         :param camera: The name of the camera for the microscope.
-        :type camera: Parameter
-        :param microscope_name: The name of the microscope.
-        :type microscope_name: Parameter
+        :type camera: Camera
+        :param microscope: The name of the microscope.
+        :type microscope: Microscope
         """
 
-        if not isinstance(acceleration_voltage, Parameter):
+        if not isinstance(acceleration_voltage, AccelerationVoltage):
             raise TypeError()
-        if not isinstance(mode, Parameter):
+        if not isinstance(mode, Mode):
             raise TypeError()
-        if not isinstance(mag_mode, Parameter):
+        if not isinstance(mag_mode, MagMode):
             raise TypeError()
-        if not isinstance(magnification, CalibratedParameter):
+        if not isinstance(magnification, Magnification):
             raise TypeError()
-        if not isinstance(cameralength, CalibratedParameter):
+        if not isinstance(cameralength, Cameralength):
             raise TypeError()
-        if not isinstance(spot, Parameter):
+        if not isinstance(spot, Spot):
             raise TypeError()
-        if not isinstance(spotsize, CalibratedParameter):
+        if not isinstance(spotsize, SpotSize):
             raise TypeError()
-        if not isinstance(condenser_aperture, CalibratedParameter):
+        if not isinstance(condenser_aperture, CondenserAperture):
             raise TypeError()
-        if not isinstance(convergence_angle, CalibratedParameter):
+        if not isinstance(convergence_angle, ConvergenceAngle):
             raise TypeError()
-        if not isinstance(rocking_angle, CalibratedParameter):
+        if not isinstance(rocking_angle, RockingAngle):
             raise TypeError()
-        if not isinstance(rocking_frequency, Parameter):
+        if not isinstance(rocking_frequency, RockingFrequency):
             raise TypeError()
-        if not isinstance(scan_step_x, CalibratedParameter):
+        if not isinstance(scan_step_x, ScanStep):
             raise TypeError()
-        if not isinstance(scan_step_y, CalibratedParameter):
+        if not isinstance(scan_step_y, ScanStep):
             raise TypeError()
-        if not isinstance(acquisition_date, Parameter):
+        if not isinstance(acquisition_date, AcquisitionDate):
             raise TypeError()
-        if not isinstance(camera, Parameter):
+        if not isinstance(camera, Camera):
             raise TypeError()
-        if not isinstance(microscope_name, Parameter):
+        if not isinstance(microscope, Microscope):
             raise TypeError()
 
-        super(Microscope, self).__init__()
+        super(MicroscopeParameters, self).__init__()
         self.acceleration_voltage = acceleration_voltage
         self.mode = mode
         self.alpha = alpha
@@ -326,7 +640,7 @@ class Microscope(object):
         self.scan_step_y = scan_step_y
         self.acquisition_date = acquisition_date
         self.camera = camera
-        self.microscope_name = microscope_name
+        self.microscope = microscope
 
     def __str__(self):
         parameter_table = tabulate([[parameter.name, parameter.value, parameter.units,
@@ -353,7 +667,7 @@ class Microscope(object):
             self.spotsize,
             self.acquisition_date,
             self.camera,
-            self.microscope_name
+            self.microscope
         ]
 
         for parameter in parameters:
@@ -576,14 +890,39 @@ class Microscope(object):
         """
         self.camera.set_value(camera)
 
-    def set_microscope_name(self, microscope_name):
+    def set_microscope(self, microscope):
         """
         Sets the microscope name
-        :param microscope_name: The name of the microscope
-        :type microscope_name: str
+        :param microscope: The name of the microscope
+        :type microscope: str
         :return:
         """
-        self.microscope_name.set_value(microscope_name)
+        self.microscope.set_value(microscope)
+
+    def set_values_from_calibrationtable(self, calibrationtable, print_results=False):
+        """
+        Sets the values of CalibratedParameters based on a calibration table.
+        :param calibrationtable: the table to pick values from.
+        :param print_results:
+        :return:
+        """
+        query_formatter = CalibrationQueryFormatter(self)
+
+        for parameter in self:
+            try:
+                if isinstance(parameter, CalibratedParameter):
+                    try:
+                        query = query_formatter(parameter)
+                    except Exception as e:
+                        raise CalibrationError(e)
+                    else:
+                        try:
+                            parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
+                        except UndefinedVariableError:
+                            print('Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value.'.format(query=query, table=calibrationtable))
+            except CalibrationError as e:
+                print('Calibration error occurred when calibrating parameter {parameter!r}:\n{e}.\nContinuing without calibrating this value.'.format(parameter=parameter, e=e))
+                raise e
 
     def get_parameters(self):
         """
