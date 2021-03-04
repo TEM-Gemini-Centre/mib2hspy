@@ -15,7 +15,7 @@ from matplotlib.patches import Rectangle
 import time
 # from .guiTools import tools
 from mib2hspy.gui.guiTools import Worker, QTextEditLogger, DataFrameModel
-from mib2hspy.Tools import MedipixHDRcontent, MedipixHDRfield, Microscope
+from mib2hspy.Tools import MedipixHDRcontent, MedipixHDRfield, MicroscopeParameters
 
 
 class LogStream(object):

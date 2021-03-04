@@ -114,12 +114,12 @@ class Converter(object):
         :type print_results: bool
         :return:
         """
-        if calibrationtable is None:
+        if calibrationtable is None and self.calibrationtable is None:
             raise CalibrationError('No calibrationtable set.')
-        else:
+        elif self.calibrationtable is None:
             if isinstance(calibrationtable, pd.DataFrame):
                 self.calibrationtable = calibrationtable
             else:
                 raise TypeError('Expected calibration table to be of type pandas.DataFrame, not {table!r}'.format(
                     table=calibrationtable))
-        self.microscope_parameters.set_values_from_calibrationtable(calibrationtable, print_results=print_results)
+        self.microscope_parameters.set_values_from_calibrationtable(self.calibrationtable, print_results=print_results)
