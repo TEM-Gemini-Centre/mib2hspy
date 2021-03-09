@@ -16,9 +16,13 @@ class CalibrationError(Error):
     pass
 
 
+class MicroscopeParameterError(Error):
+    pass
+
+
 class Parameter(object):
     """
-    A parameter
+    A parameter for storing various microscope parameter values
     """
     allowed_value_types = (int, float, str, datetime, date)
 
@@ -171,6 +175,57 @@ class Parameter(object):
         """
         return {'{self.name}'.format(self=self): {'Value': self.value, 'Units': self.units}}
 
+    def set_value_from_calibrationtable(self, calibrationtable, query, print_result=False):
+        """
+        Sets the value of the parameter to a matching entry in a calibration table.
+
+        :param calibrationtable: The calibration table to search in. Must contain a column named "Nominal <name> (<units>)" and "<name> (<units>)" that matches the parameter name and units. The table will also be filtered with additional queries.
+        :param query: Additional queries to the calibration table, see pandas.DataFrame.query for more information.
+        :type calibrationtable: pandas.DataFrame
+        :type query: str
+        :return:
+        """
+        if not isinstance(calibrationtable, pd.DataFrame):
+            raise TypeError(
+                'Expected calibration table to be of type {expected_type}, not {wrong_type}\nGot: {calibrationtable!r}'.format(
+                    expected_type=pd.DataFrame, wrong_type=type(calibrationtable), calibrationtable=calibrationtable))
+        if not isinstance(query, str):
+            raise TypeError('Expected query to be of type {expected_type}, not {wrong_type}\nGot: {query!r}'.format(
+                expected_type=str, wrong_type=type(query), query=query))
+
+        if isinstance(self, CalibratedParameter):
+            query = query + ' & ' + QueryFormatter().convert_field(self, 'q')
+        else:
+            pass
+
+        try:
+            calibration_rows = calibrationtable.query(query)
+            key = '{self.name} ({self.units})'.format(self=self)
+            values = calibration_rows[key].values  # Get the actual values from the calibration rows.
+        except UndefinedVariableError:
+            print(
+                'Unable to query calibration table for \n"{query}"\ndue to missing (required) columns. Please check that the calibration file column headers for errors. Continuing without calibrating this value.\n'.format(
+                    query=query, table=calibrationtable))
+        except KeyError as e:
+            print(
+                'No column was found for {key} in \n{calibration_rows}.\nPlease check that the calibration file column headers for errors. Continuing withoug calibrating this value.\n'.format(
+                    key=key, calibration_rows=calibration_rows))
+        else:
+            if len(values) > 0:
+                if len(values) > 1:
+                    print(
+                        'Multiple calibration rows fits with query "{query}".\nUsing last entry.\n'.format(query=query))
+                value = values[-1]
+            else:
+                print('No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(
+                    self=self, table=calibrationtable, query=query))
+                value = nan
+            if bool(print_result):
+                print('Result from query "{query}" to calibration table: {value!r}\n'.format(query=query,
+                                                                                             table=calibrationtable,
+                                                                                             value=value))
+            self.set_value(value)
+
 
 class QueryFormatter(Formatter):
     """
@@ -199,7 +254,7 @@ class QueryFormatter(Formatter):
                     else:
                         return '`Nominal {value.name} ({value.units})` == {value.nominal_value}'.format(value=value)
             elif isinstance(value, Parameter):
-                #Handle empty units specially for Parameters.
+                # Handle empty units specially for Parameters.
                 if value.units == '':
                     units = ''
                 else:
@@ -267,8 +322,13 @@ class CalibrationQueryFormatter(QueryFormatter):
             if isinstance(value, Magnification):
                 return self.create_query(value, self.microscope_parameters.mode, self.microscope_parameters.mag_mode,
                                          self.microscope_parameters.camera)
+            elif isinstance(value, ImageScale):
+                return self.create_query(self.microscope_parameters.mode, self.microscope_parameters.mag_mode,
+                                         self.microscope_parameters.camera, self.microscope_parameters.magnification)
             elif isinstance(value, Cameralength):
-                return self.create_query(value)
+                return self.create_query(value, self.microscope_parameters.camera)
+            elif isinstance(value, DiffractionScale):
+                return self.create_query(self.microscope_parameters.camera, self.microscope_parameters.cameralength)
             elif isinstance(value, SpotSize):
                 return self.create_query(value, self.microscope_parameters.mode,
                                          self.microscope_parameters.condenser_aperture)
@@ -300,7 +360,8 @@ class CalibrationQueryFormatter(QueryFormatter):
         required_parameters = [self.microscope_parameters.acceleration_voltage, self.microscope_parameters.microscope]
         parameters = [arg for arg in args]
         [parameters.append(required_parameter) for required_parameter in required_parameters]
-        return ' & '.join([super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
+        return ' & '.join(
+            [super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
 
 
 class CalibratedParameter(Parameter):
@@ -358,49 +419,6 @@ class CalibratedParameter(Parameter):
                 'Invalid nominal value {nomval!r}. Nominal value must be same type as value {self.value!r}'.format(
                     nomval=newvalue, self=self))
         self.nominal_value = newvalue
-
-    def set_value_from_calibrationtable(self, calibrationtable, query, print_result=False):
-        """
-        Sets the value of the parameter to a matching entry in a calibration table.
-
-        :param calibrationtable: The calibration table to search in. Must contain a column named "Nominal <name> (<units>)" and "<name> (<units>)" that matches the parameter name and units. The table will also be filtered with additional queries.
-        :param query: Additional queries to the calibration table, see pandas.DataFrame.query for more information.
-        :type calibrationtable: pandas.DataFrame
-        :type query: str
-        :return:
-        """
-        if not isinstance(calibrationtable, pd.DataFrame):
-            raise TypeError(
-                'Expected calibration table to be of type {expected_type}, not {wrong_type}\nGot: {calibrationtable!r}'.format(
-                    expected_type=pd.DataFrame, wrong_type=type(calibrationtable), calibrationtable=calibrationtable))
-        if not isinstance(query, str):
-            raise TypeError('Expected query to be of type {expected_type}, not {wrong_type}\nGot: {query!r}'.format(
-                expected_type=str, wrong_type=type(query), query=query))
-
-        query = query + ' & ' + QueryFormatter().convert_field(self, 'q')
-        try:
-            calibration_rows = calibrationtable.query(query)
-            key = '{self.name} ({self.units})'.format(self=self)
-            values = calibration_rows[key].values  # Get the actual values from the calibration rows.
-        except UndefinedVariableError:
-            print(
-                'Unable to query calibration table for \n"{query}"\ndue to missing (required) columns. Please check that the calibration file column headers for errors. Continuing without calibrating this value.\n'.format(
-                    query=query, table=calibrationtable))
-        except KeyError as e:
-            print('No column was found for {key} in \n{calibration_rows}.\nPlease check that the calibration file column headers for errors. Continuing withoug calibrating this value.\n'.format(key=key, calibration_rows=calibration_rows))
-        else:
-            if len(values) > 0:
-                if len(values) > 1:
-                    print('Multiple calibration rows fits with query "{query}".\nUsing last entry.\n'.format(query=query))
-                value = values[-1]
-            else:
-                print('No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(self=self, table=calibrationtable, query=query))
-                value = nan
-            if bool(print_result):
-                print('Result from query "{query}" to calibration table: {value!r}\n'.format(query=query,
-                                                                                                     table=calibrationtable,
-                                                                                                     value=value))
-            self.set_value(value)
 
     def as_dict(self):
         """Return calibrated parameter as a dictionary"""
@@ -532,6 +550,46 @@ class Microscope(Parameter):
         super(Microscope, self).__init__('Microscope', microscope, '')
 
 
+class DiffractionScale(Parameter):
+    def __init__(self, scale):
+        """
+        Create a diffraction scale
+
+        :param scale: The scale of the image (1/Å per pixel)
+        :type scale: float
+        """
+        if not isinstance(scale, float):
+            raise TypeError('Scale must be given as float, not {scale!r}'.format(scale=scale))
+
+        super(DiffractionScale, self).__init__('Scale', scale, units='1/Å')
+
+
+class ImageScale(Parameter):
+    def __init__(self, scale):
+        """
+        Create an image scale.
+
+        :param scale: The scale of the image (nm/px)
+        :type scale: float
+        """
+        if not isinstance(scale, float):
+            raise TypeError('Scale must be given as float, not {scale!r}'.format(scale=scale))
+
+        super(ImageScale, self).__init__('Scale', scale, units='nm')
+
+
+class ExposureTime(Parameter):
+    def __init__(self, exposure_time):
+        """
+        Create an exposure time object
+        :param exposure_time: The exposure time in ms
+        :type exposure_time: float
+        """
+        if not isinstance(exposure_time, float):
+            raise TypeError('Exposure time given as float, not {exposure_time!r}'.format(exposure_time=exposure_time))
+        super(ExposureTime, self).__init__('Exposure time', exposure_time, units='ms')
+
+
 class MicroscopeParameters(object):
     def __init__(self,
                  acceleration_voltage=AccelerationVoltage(nan),
@@ -539,7 +597,9 @@ class MicroscopeParameters(object):
                  alpha=Alpha(nan),
                  mag_mode=MagMode('None'),
                  magnification=Magnification(nan, nan),
+                 image_scale=ImageScale(nan),
                  cameralength=Cameralength(nan, nan),
+                 diffraction_scale=DiffractionScale(nan),
                  spot=Spot(nan),
                  spotsize=SpotSize(nan, nan),
                  condenser_aperture=CondenserAperture(nan, nan),
@@ -550,6 +610,7 @@ class MicroscopeParameters(object):
                  scan_step_y=ScanStep(nan, nan, 'Y'),
                  acquisition_date=AcquisitionDate('None'),
                  camera=Camera('None'),
+                 exposure_time=ExposureTime(nan),
                  microscope=Microscope('None')
                  ):
         """
@@ -565,8 +626,12 @@ class MicroscopeParameters(object):
         :type mag_mode: MagMode
         :param magnification: The magnification of the microscope.
         :type magnification: Magnification
+        :param image_scale: The scale of images acquired with the microscope parameters (nm/px).
+        :type image_scale: ImageScale
         :param cameralength: The cameralength of the microscope in cm
         :type cameralength: Cameralength
+        :param diffraction_scale: The scale of diffraction patterns acquired with the microscope parameters (1/Å per px).
+        :type diffraction_scale: DiffractionScale
         :param spot: The spot setting of the microscope
         :type spot: Spot
         :param spotsize: The spotsize of the microscope.
@@ -587,6 +652,8 @@ class MicroscopeParameters(object):
         :type acquisition_date: AcquisitionDate
         :param camera: The name of the camera for the microscope.
         :type camera: Camera
+        :param exposure_time: The exposure time of the experiment.
+        :type exposure_time: ExposureTime
         :param microscope: The name of the microscope.
         :type microscope: Microscope
         """
@@ -599,7 +666,11 @@ class MicroscopeParameters(object):
             raise TypeError()
         if not isinstance(magnification, Magnification):
             raise TypeError()
+        if not isinstance(image_scale, ImageScale):
+            raise TypeError()
         if not isinstance(cameralength, Cameralength):
+            raise TypeError()
+        if not isinstance(diffraction_scale, DiffractionScale):
             raise TypeError()
         if not isinstance(spot, Spot):
             raise TypeError()
@@ -621,27 +692,282 @@ class MicroscopeParameters(object):
             raise TypeError()
         if not isinstance(camera, Camera):
             raise TypeError()
+        if not isinstance(exposure_time, ExposureTime):
+            raise TypeError()
         if not isinstance(microscope, Microscope):
             raise TypeError()
 
         super(MicroscopeParameters, self).__init__()
-        self.acceleration_voltage = acceleration_voltage
-        self.mode = mode
-        self.alpha = alpha
-        self.mag_mode = mag_mode
-        self.magnification = magnification
-        self.cameralength = cameralength
-        self.spot = spot
-        self.spotsize = spotsize
-        self.condenser_aperture = condenser_aperture
-        self.convergence_angle = convergence_angle
-        self.rocking_angle = rocking_angle
-        self.rocking_frequency = rocking_frequency
-        self.scan_step_x = scan_step_x
-        self.scan_step_y = scan_step_y
-        self.acquisition_date = acquisition_date
-        self.camera = camera
-        self.microscope = microscope
+        self._acceleration_voltage = acceleration_voltage
+        self._mode = mode
+        self._alpha = alpha
+        self._mag_mode = mag_mode
+        self._magnification = magnification
+        self._image_scale = image_scale
+        self._cameralength = cameralength
+        self._diffraction_scale = diffraction_scale
+        self._spot = spot
+        self._spotsize = spotsize
+        self._condenser_aperture = condenser_aperture
+        self._convergence_angle = convergence_angle
+        self._rocking_angle = rocking_angle
+        self._rocking_frequency = rocking_frequency
+        self._scan_step_x = scan_step_x
+        self._scan_step_y = scan_step_y
+        self._acquisition_date = acquisition_date
+        self._camera = camera
+        self._exposure_time = exposure_time
+        self._microscope = microscope
+
+        self._parameters = [
+            self._acceleration_voltage,
+            self._mode,
+            self._alpha,
+            self._magnification,
+            self._image_scale,
+            self._cameralength,
+            self._diffraction_scale,
+            self._mag_mode,
+            self._rocking_angle,
+            self._rocking_frequency,
+            self._scan_step_y,
+            self._scan_step_x,
+            self._convergence_angle,
+            self._condenser_aperture,
+            self._spot,
+            self._spotsize,
+            self._acquisition_date,
+            self._camera,
+            self._exposure_time,
+            self._microscope
+        ]
+
+    @property
+    def acceleration_voltage(self):
+        return self._acceleration_voltage.value
+
+    @acceleration_voltage.setter
+    def acceleration_voltage(self, acceleration_voltage):
+        self._acceleration_voltage.set_value(acceleration_voltage)
+
+    @property
+    def mode(self):
+        return self._mode.value
+
+    @mode.setter
+    def mode(self, mode):
+        self._mode.set_value(mode)
+
+    @property
+    def alpha(self):
+        return self._alpha.value
+
+    @alpha.setter
+    def alpha(self, alpha):
+        self._alpha.set_value(alpha)
+
+    @property
+    def mag_mode(self):
+        return self._mag_mode.value
+
+    @mag_mode.setter
+    def mag_mode(self, mag_mode):
+        self._mag_mode.set_value(mag_mode)
+
+    @property
+    def magnification(self):
+        return tuple([self._magnification.nominal_value, self._magnification.value])
+
+    @magnification.setter
+    def magnification(self, magnification):
+        if isinstance(magnification, (int, float)):
+            self._magnification.set_value(magnification)
+        else:
+            try:
+                self._magnification.set_value(magnification[1])
+                self._magnification.set_nominal_value(magnification[0])
+            except IndexError as e:
+                raise MicroscopeParameterError('Cannot set magnification of microscope to {mag}: {e!r}'.format(mag=magnification, e=e))
+            
+
+    @property
+    def cameralength(self):
+        return tuple([self._cameralength.nominal_value, self._cameralength.value])
+
+    @cameralength.setter
+    def cameralength(self, cameralength):
+        if isinstance(cameralength, (int, float)):
+            self._cameralength.set_value(cameralength)
+        else:
+            try:
+                self._cameralength.set_value(cameralength[1])
+                self._cameralength.set_nominal_value(cameralength[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set cameralength of microscope to {cl}: {e!r}'.format(cl=cameralength, e=e))
+
+    @property
+    def image_scale(self):
+        return self._image_scale.value
+
+    @image_scale.setter
+    def image_scale(self, scale):
+        self._image_scale.set_value(scale)
+
+    @property
+    def diffraction_scale(self):
+        return self._diffraction_scale.value
+
+    @diffraction_scale.setter
+    def diffraction_scale(self, scale):
+        self._diffraction_scale.set_value(scale)
+    
+    @property
+    def spot(self):
+        return self._spot.value
+    
+    @spot.setter
+    def spot(self, spot):
+        self._spot.set_value(spot)
+    
+    @property
+    def spotsize(self):
+        return tuple([self._spotsize.nominal_value, self._spotsize.value])
+    
+    @spotsize.setter
+    def spotsize(self, spotsize):
+        if isinstance(spotsize, (int, float)):
+            self._spotsize.set_value(spotsize)
+        else:
+            try:
+                self._spotsize.set_value(spotsize[1])
+                self._spotsize.set_nominal_value(spotsize[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set spotsize of microscope to {spotsize}: {e!r}'.format(spotsize=spotsize, e=e))
+    
+    @property
+    def condenser_aperture(self):
+        return tuple([self._condenser_aperture.nominal_value, self._condenser_aperture.value])
+    
+    @condenser_aperture.setter
+    def condenser_aperture(self, condenser_aperture):
+        if isinstance(condenser_aperture, (int, float)):
+            self._condenser_aperture.set_value(condenser_aperture)
+        else:
+            try:
+                self._condenser_aperture.set_value(condenser_aperture[1])
+                self._condenser_aperture.set_nominal_value(condenser_aperture[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set condenser_aperture of microscope to {ca}: {e!r}'.format(ca=condenser_aperture, e=e))
+    
+    @property
+    def convergence_angle(self):
+        return tuple([self._convergence_angle.nominal_value, self._convergence_angle.value])
+    
+    @convergence_angle.setter
+    def convergence_angle(self, convergence_angle):
+        if isinstance(convergence_angle, (int, float)):
+            self._convergence_angle.set_value(convergence_angle)
+        else:
+            try:
+                self._convergence_angle.set_value(convergence_angle[1])
+                self._convergence_angle.set_nominal_value(convergence_angle[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set convergence_angle of microscope to {ca}: {e!r}'.format(ca=convergence_angle, e=e))
+
+    @property
+    def rocking_angle(self):
+        return tuple([self._rocking_angle.nominal_value, self._rocking_angle.value])
+    
+    @rocking_angle.setter
+    def rocking_angle(self, rocking_angle):
+        if isinstance(rocking_angle, (int, float)):
+            self._rocking_angle.set_value(rocking_angle)
+        else:
+            try:
+                self._rocking_angle.set_value(rocking_angle[1])
+                self._rocking_angle.set_nominal_value(rocking_angle[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set rocking_angle of microscope to {ra}: {e!r}'.format(ra=rocking_angle, e=e))
+            
+    
+    @property
+    def rocking_frequency(self):
+        return self._rocking_frequency.value
+    
+    @rocking_frequency.setter
+    def rocking_frequency(self, rocking_frequency):
+        self._rocking_frequency.set_value(rocking_frequency)
+    
+    @property
+    def scan_step_x(self):
+        return tuple([self._scan_step_x.nominal_value, self._scan_step_x.value])
+    
+    @scan_step_x.setter
+    def scan_step_x(self, step):
+        if isinstance(step, (int, float)):
+            self._scan_step_x.set_value(step)
+        else:
+            try:
+                self._scan_step_x.set_value(step[1])
+                self._scan_step_x.set_nominal_value(step[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set X step of microscope to {step}: {e!r}'.format(step=step, e=e))
+
+    @property
+    def scan_step_y(self):
+        return tuple([self._scan_step_y.nominal_value, self._scan_step_y.value])
+
+    @scan_step_y.setter
+    def scan_step_y(self, step):
+        if isinstance(step, (int, float)):
+            self._scan_step_y.set_value(step)
+        else:
+            try:
+                self._scan_step_y.set_value(step[1])
+                self._scan_step_y.set_nominal_value(step[0])
+            except IndexError as e:
+                raise MicroscopeParameterError(
+                    'Cannot set Y step of microscope to {step}: {e!r}'.format(step=step, e=e))
+
+
+    @property
+    def acquisition_date(self):
+        return self._acquisition_date.value
+
+    @acquisition_date.setter
+    def acquisition_date(self, acquisition_date):
+        self._acquisition_date.set_value(acquisition_date)
+
+    @property
+    def camera(self):
+        return self._camera.value
+
+    @camera.setter
+    def camera(self, camera):
+        self._camera.set_value(camera)
+
+    @property
+    def exposure_time(self):
+        return self._exposure_time.value
+
+    @exposure_time.setter
+    def exposure_time(self, exposure_time):
+        self._exposure_time.set_value(exposure_time)
+
+    @property
+    def microscope(self):
+        return self._microscope.value
+
+    @microscope.setter
+    def microscope(self, microscope):
+        self._microscope.set_value(microscope)
+    
 
     def __str__(self):
         parameter_table = tabulate([[parameter.name, parameter.value, parameter.units,
@@ -651,27 +977,7 @@ class MicroscopeParameters(object):
         return parameter_table
 
     def __iter__(self):
-        parameters = [
-            self.acceleration_voltage,
-            self.mode,
-            self.alpha,
-            self.magnification,
-            self.cameralength,
-            self.mag_mode,
-            self.rocking_angle,
-            self.rocking_frequency,
-            self.scan_step_y,
-            self.scan_step_x,
-            self.convergence_angle,
-            self.condenser_aperture,
-            self.spot,
-            self.spotsize,
-            self.acquisition_date,
-            self.camera,
-            self.microscope
-        ]
-
-        for parameter in parameters:
+        for parameter in self._parameters:
             yield parameter
 
     def set_acceleration_voltage(self, acceleration_voltage):
@@ -681,7 +987,7 @@ class MicroscopeParameters(object):
         :type acceleration_voltage: float
         :return:
         """
-        self.acceleration_voltage.set_value(acceleration_voltage * 1E3)
+        self._acceleration_voltage.set_value(acceleration_voltage * 1E3)
 
     def set_mode(self, mode):
         """
@@ -690,7 +996,7 @@ class MicroscopeParameters(object):
         :type mode: str
         :return:
         """
-        self.mode.set_value(mode)
+        self._mode.set_value(mode)
 
     def set_alpha(self, alpha):
         """
@@ -699,7 +1005,7 @@ class MicroscopeParameters(object):
         :type alpha: int
         :return: 
         """
-        self.alpha.set_value(alpha)
+        self._alpha.set_value(alpha)
 
     def set_mag_mode(self, mag_mode):
         """
@@ -708,7 +1014,7 @@ class MicroscopeParameters(object):
         :type mag_mode: str
         :return: 
         """
-        self.mag_mode.set_value(mag_mode)
+        self._mag_mode.set_value(mag_mode)
 
     def set_magnification(self, magnification):
         """
@@ -717,7 +1023,7 @@ class MicroscopeParameters(object):
         :type magnification: float
         :return: 
         """
-        self.magnification.set_value(magnification)
+        self._magnification.set_value(magnification)
 
     def set_nominal_magnification(self, magnification):
         """
@@ -726,7 +1032,16 @@ class MicroscopeParameters(object):
         :type magnification: float
         :return: 
         """
-        self.magnification.set_nominal_value(magnification)
+        self._magnification.set_nominal_value(magnification)
+
+    def set_image_scale(self, scale):
+        """
+        Sets the image scale.
+        :param scale: The scale given in nm/px
+        :type scale: float
+        :return: 
+        """
+        self._image_scale.set_value(scale)
 
     def set_cameralength(self, cameralength):
         """
@@ -735,7 +1050,7 @@ class MicroscopeParameters(object):
         :type cameralength: float
         :return: 
         """
-        self.cameralength.set_value(cameralength)
+        self._cameralength.set_value(cameralength)
 
     def set_nominal_cameralength(self, cameralength):
         """
@@ -744,7 +1059,16 @@ class MicroscopeParameters(object):
         :type cameralength: float
         :return:
         """
-        self.cameralength.set_nominal_value(cameralength)
+        self._cameralength.set_nominal_value(cameralength)
+
+    def set_diffraction_scale(self, scale):
+        """
+        Sets the diffraction scale.
+        :param scale: The scale given in 1/Å/px
+        :type scale: float
+        :return: 
+        """
+        self._diffraction_scale.set_value(scale)
 
     def set_spot(self, spot):
         """
@@ -754,7 +1078,7 @@ class MicroscopeParameters(object):
         :type spot: int
         :return:
         """
-        self.spot.set_value(spot)
+        self._spot.set_value(spot)
 
     def setSpotsize(self, spotsize):
         """
@@ -763,7 +1087,7 @@ class MicroscopeParameters(object):
         :type spotsize: float
         :return:
         """
-        self.spotsize.set_value(spotsize)
+        self._spotsize.set_value(spotsize)
 
     def set_nominal_spotsize(self, spotsize):
         """
@@ -772,7 +1096,7 @@ class MicroscopeParameters(object):
         :type spotsize: float
         :return:
         """
-        self.spotsize.set_nominal_value(spotsize)
+        self._spotsize.set_nominal_value(spotsize)
 
     def set_condenser_aperture(self, aperturesize):
         """
@@ -781,7 +1105,7 @@ class MicroscopeParameters(object):
         :type aperturesize: float
         :return:
         """
-        self.condenser_aperture.set_value(aperturesize)
+        self._condenser_aperture.set_value(aperturesize)
 
     def set_nominal_condenser_aperture(self, aperturesize):
         """
@@ -790,7 +1114,7 @@ class MicroscopeParameters(object):
         :type aperturesize: float
         :return:
         """
-        self.condenser_aperture.set_nominal_value(aperturesize)
+        self._condenser_aperture.set_nominal_value(aperturesize)
 
     def set_convergence_angle(self, angle):
         """
@@ -799,7 +1123,7 @@ class MicroscopeParameters(object):
         :type angle: float
         :return:
         """
-        self.convergence_angle.set_value(angle)
+        self._convergence_angle.set_value(angle)
 
     def set_nominal_convergence_angle(self, angle):
         """
@@ -808,7 +1132,7 @@ class MicroscopeParameters(object):
         :type angle: float
         :return:
         """
-        self.convergence_angle.set_nominal_value(angle)
+        self._convergence_angle.set_nominal_value(angle)
 
     def set_rocking_angle(self, angle):
         """
@@ -817,7 +1141,7 @@ class MicroscopeParameters(object):
         :type angle: float
         :return:
         """
-        self.rocking_angle.set_value(angle)
+        self._rocking_angle.set_value(angle)
 
     def set_nominal_rocking_angle(self, angle):
         """
@@ -826,7 +1150,7 @@ class MicroscopeParameters(object):
         :type angle: float
         :return:
         """
-        self.rocking_angle.set_nominal_value(angle)
+        self._rocking_angle.set_nominal_value(angle)
 
     def set_rocking_frequency(self, frequency):
         """
@@ -835,7 +1159,7 @@ class MicroscopeParameters(object):
         :type frequency: float
         :return:
         """
-        self.rocking_frequency.set_value(frequency)
+        self._rocking_frequency.set_value(frequency)
 
     def set_scan_step_x(self, step):
         """
@@ -844,7 +1168,7 @@ class MicroscopeParameters(object):
         :type step: float
         :return:
         """
-        self.scan_step_x.set_value(step)
+        self._scan_step_x.set_value(step)
 
     def set_nominal_scan_step_x(self, step):
         """
@@ -853,7 +1177,7 @@ class MicroscopeParameters(object):
         :type step: float
         :return:
         """
-        self.scan_step_x.set_nominal_value(step)
+        self._scan_step_x.set_nominal_value(step)
 
     def set_scan_step_y(self, step):
         """
@@ -862,7 +1186,7 @@ class MicroscopeParameters(object):
         :type step: float
         :return:
         """
-        self.scan_step_y.set_value(step)
+        self._scan_step_y.set_value(step)
 
     def set_nominal_scan_step_y(self, step):
         """
@@ -871,7 +1195,7 @@ class MicroscopeParameters(object):
         :type step: float
         :return:
         """
-        self.scan_step_y.set_nominal_value(step)
+        self._scan_step_y.set_nominal_value(step)
 
     def set_acquisition_date(self, date):
         """
@@ -880,7 +1204,7 @@ class MicroscopeParameters(object):
         :type date: datetime
         :return:
         """
-        self.acquisition_date.set_value(date)
+        self._acquisition_date.set_value(date)
 
     def set_camera(self, camera):
         """
@@ -889,7 +1213,7 @@ class MicroscopeParameters(object):
         :type camera: str
         :return:
         """
-        self.camera.set_value(camera)
+        self._camera.set_value(camera)
 
     def set_microscope(self, microscope):
         """
@@ -898,7 +1222,7 @@ class MicroscopeParameters(object):
         :type microscope: str
         :return:
         """
-        self.microscope.set_value(microscope)
+        self._microscope.set_value(microscope)
 
     def set_values_from_calibrationtable(self, calibrationtable, print_results=False):
         """
@@ -920,9 +1244,33 @@ class MicroscopeParameters(object):
                         try:
                             parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
                         except UndefinedVariableError:
-                            print('Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value.'.format(query=query, table=calibrationtable))
+                            print(
+                                'Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value.'.format(
+                                    query=query, table=calibrationtable))
             except CalibrationError as e:
-                print('Calibration error occurred when calibrating parameter {parameter!r}:\n{e}.\nContinuing without calibrating this value.'.format(parameter=parameter, e=e))
+                print(
+                    'Calibration error occurred when calibrating parameter {parameter!r}:\n{e}.\nContinuing without calibrating this value.'.format(
+                        parameter=parameter, e=e))
+                raise e
+
+        # Calibrate the scales after all the calibrated parameters have been set.
+        for parameter in [self._image_scale, self._diffraction_scale]:
+            try:
+                try:
+                    query = query_formatter(parameter)
+                except Exception as e:
+                    raise CalibrationError(e)
+                else:
+                    try:
+                        parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
+                    except UndefinedVariableError:
+                        print(
+                            'Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value.'.format(
+                                query=query, table=calibrationtable))
+            except CalibrationError as e:
+                print(
+                    'Calibration error occurred when calibrating parameter {parameter!r}:\n{e}.\nContinuing without calibrating this value.'.format(
+                        parameter=parameter, e=e))
                 raise e
 
     def get_parameters(self):
@@ -931,7 +1279,7 @@ class MicroscopeParameters(object):
         :return: parameters of the microscope.
         :rtype: list
         """
-        return [parameter for parameter in self]
+        return list(self._parameters)
 
     def as_dataframe2D(self):
         """
@@ -950,53 +1298,53 @@ class MicroscopeParameters(object):
         :rtype: pandas.DataFrame
         """
         return pd.DataFrame([[
-            self.mode.value,
-            self.alpha.value,
-            self.spot.value,
-            self.spotsize.nominal_value,
-            self.spotsize.value,
-            self.convergence_angle.nominal_value,
-            self.convergence_angle.value,
-            self.condenser_aperture.nominal_value,
-            self.condenser_aperture.value,
-            self.magnification.nominal_value,
-            self.magnification.value,
-            self.cameralength.nominal_value,
-            self.cameralength.value,
-            self.rocking_angle.nominal_value,
-            self.rocking_angle.value,
-            self.rocking_frequency.value,
-            self.scan_step_x.nominal_value,
-            self.scan_step_x.value,
-            self.scan_step_y.nominal_value,
-            self.scan_step_y.value,
-            self.acquisition_date.value,
-            self.camera.value,
-            self.microscope_name.value
+            self._mode.value,
+            self._alpha.value,
+            self._spot.value,
+            self._spotsize.nominal_value,
+            self._spotsize.value,
+            self._convergence_angle.nominal_value,
+            self._convergence_angle.value,
+            self._condenser_aperture.nominal_value,
+            self._condenser_aperture.value,
+            self._magnification.nominal_value,
+            self._magnification.value,
+            self._cameralength.nominal_value,
+            self._cameralength.value,
+            self._rocking_angle.nominal_value,
+            self._rocking_angle.value,
+            self._rocking_frequency.value,
+            self._scan_step_x.nominal_value,
+            self._scan_step_x.value,
+            self._scan_step_y.nominal_value,
+            self._scan_step_y.value,
+            self._acquisition_date.value,
+            self._camera.value,
+            self._microscope.value
         ]], columns=[
-            self.mode.name,
-            self.alpha.name,
-            self.spot.name,
-            'Nominal {}'.format(self.spotsize.name),
-            self.spotsize.name,
-            'Nominal {}'.format(self.convergence_angle.name),
-            self.convergence_angle.name,
-            'Nominal {}'.format(self.condenser_aperture.name),
-            self.condenser_aperture.name,
-            'Nominal {}'.format(self.magnification.name),
-            self.magnification.name,
-            'Nominal {}'.format(self.cameralength.name),
-            self.cameralength.name,
-            'Nominal {}'.format(self.rocking_angle.name),
-            self.rocking_angle.name,
-            self.rocking_frequency.name,
-            'Nominal {}'.format(self.scan_step_x.name),
-            self.scan_step_x.name,
-            'Nominal {}'.format(self.scan_step_y.name),
-            self.scan_step_y.name,
-            self.acquisition_date.name,
-            self.camera.name,
-            self.microscope_name.name
+            self._mode.name,
+            self._alpha.name,
+            self._spot.name,
+            'Nominal {}'.format(self._spotsize.name),
+            self._spotsize.name,
+            'Nominal {}'.format(self._convergence_angle.name),
+            self._convergence_angle.name,
+            'Nominal {}'.format(self._condenser_aperture.name),
+            self._condenser_aperture.name,
+            'Nominal {}'.format(self._magnification.name),
+            self._magnification.name,
+            'Nominal {}'.format(self._cameralength.name),
+            self._cameralength.name,
+            'Nominal {}'.format(self._rocking_angle.name),
+            self._rocking_angle.name,
+            self._rocking_frequency.name,
+            'Nominal {}'.format(self._scan_step_x.name),
+            self._scan_step_x.name,
+            'Nominal {}'.format(self._scan_step_y.name),
+            self._scan_step_y.name,
+            self._acquisition_date.name,
+            self._camera.name,
+            self._microscope.name
         ])
 
     def get_parameters_as_dict(self):
