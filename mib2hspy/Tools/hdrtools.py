@@ -43,7 +43,7 @@ class MedipixHDRfield(object):
         return self.value.__pow__(power, modulo=modulo)
 
     def as_dict(self):
-        return {self.name.lower.replace(' ', ''): self.value}
+        return {self.name.lower().replace(' ', ''): self.value}
 
 
 class MedipixHDRcontent(object):

@@ -360,8 +360,7 @@ class CalibrationQueryFormatter(QueryFormatter):
         required_parameters = [self.microscope_parameters.acceleration_voltage, self.microscope_parameters.microscope]
         parameters = [arg for arg in args]
         [parameters.append(required_parameter) for required_parameter in required_parameters]
-        return ' & '.join(
-            [super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
+        return ' & '.join([super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
 
 
 class CalibratedParameter(Parameter):
@@ -744,7 +743,7 @@ class MicroscopeParameters(object):
 
     @property
     def acceleration_voltage(self):
-        return self._acceleration_voltage.value
+        return self._acceleration_voltage
 
     @acceleration_voltage.setter
     def acceleration_voltage(self, acceleration_voltage):
@@ -752,7 +751,7 @@ class MicroscopeParameters(object):
 
     @property
     def mode(self):
-        return self._mode.value
+        return self._mode
 
     @mode.setter
     def mode(self, mode):
@@ -760,7 +759,7 @@ class MicroscopeParameters(object):
 
     @property
     def alpha(self):
-        return self._alpha.value
+        return self._alpha
 
     @alpha.setter
     def alpha(self, alpha):
@@ -768,7 +767,7 @@ class MicroscopeParameters(object):
 
     @property
     def mag_mode(self):
-        return self._mag_mode.value
+        return self._mag_mode
 
     @mag_mode.setter
     def mag_mode(self, mag_mode):
@@ -776,7 +775,7 @@ class MicroscopeParameters(object):
 
     @property
     def magnification(self):
-        return tuple([self._magnification.nominal_value, self._magnification.value])
+        return self._magnification
 
     @magnification.setter
     def magnification(self, magnification):
@@ -787,12 +786,12 @@ class MicroscopeParameters(object):
                 self._magnification.set_value(magnification[1])
                 self._magnification.set_nominal_value(magnification[0])
             except IndexError as e:
-                raise MicroscopeParameterError('Cannot set magnification of microscope to {mag}: {e!r}'.format(mag=magnification, e=e))
-            
+                raise MicroscopeParameterError(
+                    'Cannot set magnification of microscope to {mag}: {e!r}'.format(mag=magnification, e=e))
 
     @property
     def cameralength(self):
-        return tuple([self._cameralength.nominal_value, self._cameralength.value])
+        return self._cameralength
 
     @cameralength.setter
     def cameralength(self, cameralength):
@@ -808,7 +807,7 @@ class MicroscopeParameters(object):
 
     @property
     def image_scale(self):
-        return self._image_scale.value
+        return self._image_scale
 
     @image_scale.setter
     def image_scale(self, scale):
@@ -816,24 +815,24 @@ class MicroscopeParameters(object):
 
     @property
     def diffraction_scale(self):
-        return self._diffraction_scale.value
+        return self._diffraction_scale
 
     @diffraction_scale.setter
     def diffraction_scale(self, scale):
         self._diffraction_scale.set_value(scale)
-    
+
     @property
     def spot(self):
-        return self._spot.value
-    
+        return self._spot
+
     @spot.setter
     def spot(self, spot):
         self._spot.set_value(spot)
-    
+
     @property
     def spotsize(self):
-        return tuple([self._spotsize.nominal_value, self._spotsize.value])
-    
+        return self._spotsize
+
     @spotsize.setter
     def spotsize(self, spotsize):
         if isinstance(spotsize, (int, float)):
@@ -845,11 +844,11 @@ class MicroscopeParameters(object):
             except IndexError as e:
                 raise MicroscopeParameterError(
                     'Cannot set spotsize of microscope to {spotsize}: {e!r}'.format(spotsize=spotsize, e=e))
-    
+
     @property
     def condenser_aperture(self):
-        return tuple([self._condenser_aperture.nominal_value, self._condenser_aperture.value])
-    
+        return self._condenser_aperture
+
     @condenser_aperture.setter
     def condenser_aperture(self, condenser_aperture):
         if isinstance(condenser_aperture, (int, float)):
@@ -861,11 +860,11 @@ class MicroscopeParameters(object):
             except IndexError as e:
                 raise MicroscopeParameterError(
                     'Cannot set condenser_aperture of microscope to {ca}: {e!r}'.format(ca=condenser_aperture, e=e))
-    
+
     @property
     def convergence_angle(self):
-        return tuple([self._convergence_angle.nominal_value, self._convergence_angle.value])
-    
+        return self._convergence_angle
+
     @convergence_angle.setter
     def convergence_angle(self, convergence_angle):
         if isinstance(convergence_angle, (int, float)):
@@ -880,8 +879,8 @@ class MicroscopeParameters(object):
 
     @property
     def rocking_angle(self):
-        return tuple([self._rocking_angle.nominal_value, self._rocking_angle.value])
-    
+        return self._rocking_angle
+
     @rocking_angle.setter
     def rocking_angle(self, rocking_angle):
         if isinstance(rocking_angle, (int, float)):
@@ -893,20 +892,19 @@ class MicroscopeParameters(object):
             except IndexError as e:
                 raise MicroscopeParameterError(
                     'Cannot set rocking_angle of microscope to {ra}: {e!r}'.format(ra=rocking_angle, e=e))
-            
-    
+
     @property
     def rocking_frequency(self):
-        return self._rocking_frequency.value
-    
+        return self._rocking_frequency
+
     @rocking_frequency.setter
     def rocking_frequency(self, rocking_frequency):
         self._rocking_frequency.set_value(rocking_frequency)
-    
+
     @property
     def scan_step_x(self):
-        return tuple([self._scan_step_x.nominal_value, self._scan_step_x.value])
-    
+        return self._scan_step_x
+
     @scan_step_x.setter
     def scan_step_x(self, step):
         if isinstance(step, (int, float)):
@@ -921,7 +919,7 @@ class MicroscopeParameters(object):
 
     @property
     def scan_step_y(self):
-        return tuple([self._scan_step_y.nominal_value, self._scan_step_y.value])
+        return self._scan_step_y
 
     @scan_step_y.setter
     def scan_step_y(self, step):
@@ -935,10 +933,9 @@ class MicroscopeParameters(object):
                 raise MicroscopeParameterError(
                     'Cannot set Y step of microscope to {step}: {e!r}'.format(step=step, e=e))
 
-
     @property
     def acquisition_date(self):
-        return self._acquisition_date.value
+        return self._acquisition_date
 
     @acquisition_date.setter
     def acquisition_date(self, acquisition_date):
@@ -946,7 +943,7 @@ class MicroscopeParameters(object):
 
     @property
     def camera(self):
-        return self._camera.value
+        return self._camera
 
     @camera.setter
     def camera(self, camera):
@@ -954,7 +951,7 @@ class MicroscopeParameters(object):
 
     @property
     def exposure_time(self):
-        return self._exposure_time.value
+        return self._exposure_time
 
     @exposure_time.setter
     def exposure_time(self, exposure_time):
@@ -962,12 +959,11 @@ class MicroscopeParameters(object):
 
     @property
     def microscope(self):
-        return self._microscope.value
+        return self._microscope
 
     @microscope.setter
     def microscope(self, microscope):
         self._microscope.set_value(microscope)
-    
 
     def __str__(self):
         parameter_table = tabulate([[parameter.name, parameter.value, parameter.units,
