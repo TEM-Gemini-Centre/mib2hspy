@@ -433,8 +433,84 @@ class Converter(object):
 
         return fig
 
-    def plot_VBF(self, type, cx = None, cy=None, **kwargs):
-        raise NotImplementedError
+    def get_square_vbf(self, cx=None, cy=None, width=10):
+        """
+        Get an "inappropriate" VBF of the signal using a box around the central beam.
+
+        :param cx: The centre position of the box along X.
+        :param cy: The centre position of the box along Y.
+        :param width: The width of the box.
+        :return:
+        """
+        if cx is None:
+            cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size/2)]
+
+        if cy is None:
+            cy = self.data.axes_manager[-1].axis[int(self.data.axes_manager[-1].size/2)]
+
+        half_width = int(width / 2)
+        if isinstance(cy, float) or isinstance(cx, float):
+            half_width *= self.data.axes_manager[-2].scale
+
+        return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(
+            axis=np.arange(self.dimension - 2, self.dimension))
+
+    def get_circular_VBF(self, cx=None, cy=None, r=10, r_inner=0):
+        """
+        Get a VBF signal using a circular mask.
+
+        :param cx: Centre of mask.
+        :param cy: Centre of mask.
+        :param r: Radius of circle.
+        :param r_inner: Inner radius of annular circle.
+        :return:
+        """
+        if cx is None:
+            cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size / 2)]
+
+        if cy is None:
+            cy = self.data.axes_manager[-1].axis[int(self.data.axes_manager[-1].size / 2)]
+
+        if isinstance(cx, int):
+            warn(
+                'X coordinate of centre of circular aperture for VBF is given as an integer. Interpreting this as '
+                'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
+                'centre.')
+            cx = self.data.axes_manager[-2].axis[cx]
+        if isinstance(cx, int):
+            warn(
+                'Y coordinate of centre of circular aperture for VBF is given as an integer. Interpreting this as '
+                'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
+                'centre.')
+            cy = self.data.axes_manager[-1].axis[cy]
+        if isinstance(r, int):
+            warn(
+                'Outer radius of circular aperture for VBF is given as an integer. Interpreting this as '
+                'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
+                'radius.')
+            r = r * self.data.axes_manager[-2].scale
+        if isinstance(r_inner, int):
+            warn(
+                'Inner radius of circular aperture for VBF is given as an integer. Interpreting this as '
+                'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
+                'inner radius.')
+            t_inner = r_inner * self.data.axes_manager[-2].scale
+        return self.data.get_integrated_intensity(hs.roi.CircleROI(cx, cy, r, r_inner=r_inner))
+
+    def plot_VBF(self, type, *args, scalebar_params=None, **kwargs):
+        """
+        Plot a virtual bright field of the data.
+
+        :param type: The type of VBF. Should be either "box" or "circle".
+        :param args: Arguments passed to VBF generation function (depends on the `type` parameter)
+        :param scalebar_params: Keyword arguments passed to scalebar generation.
+        :param kwargs: Optional Keyword arguments passed to plotting functions (imshow for images and plot for profiles).
+        :return:
+        """
+
+        if scalebar_params is None:
+            scalebar_params = {}
+
         supported_types = ['box', 'circle']
         if self.data is None:
             raise FileNotSetError('Cannot plot VBF. File is not set.')
@@ -442,54 +518,32 @@ class Converter(object):
         if not self.frames > 1:
             warn('{self.data} has only {self.frames} frames. Preparing VBF will result in a single-pixel image')
 
-        if cx is None:
-            cx = int(self.data.axes_manager[-2].size / 2 + self.data.axes_manager[-2].offset / self.data.axes_manager[-2].scale)
-
-        if cy is None:
-            cy = int(self.data.axes_manager[-1].size / 2 + self.data.axes_manager[-1].offset / self.data.axes_manager[-1].scale)
-
         if type == 'box':
-            width = kwargs.get('width', 10)
-            half_width = int(width/2)
-            if isinstance(cx, float):
-                warn('X coordinate of centre of box for VBF is given as a float. Interpreting this as a scaled '
-                     'coordinate and transforming it into a pixel coordinate when determining the box centre.')
-                cx = int(cx / self.data.axes_manager[-2].scale)
-            if isinstance(cy, float):
-                warn(
-                    'Y coordinate of centre of box for VBF is given as a float. Interpreting this as a scaled '
-                    'coordinate and transforming it into a pixel coordinate when determining the box centre.')
-                cy = int(cy / self.data.axes_manager[-1].scale)
-
-            vbf = self.data.isig[int(cx - half_width):int(cx + half_width), int(cy - half_width):int(cy + half_width)].sum(
-                axis=np.arange(self.dimension - 2, self.dimension))
+            vbf = self.get_square_vbf(*args)
         elif type == 'circle':
-            r = kwargs.get('r', 10*self.data.axes_manager[-2].scale)
-            r_inner = kwargs.get('r_inner', 0.)
-            if isinstance(cx, int):
-                warn(
-                    'X coordinate of centre of circular aperture for VBF is given as an integer. Interpreting this as '
-                    'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
-                    'centre.')
-                cx = cx * self.data.axes_manager[-2].scale
-            if isinstance(cx, int):
-                warn(
-                    'Y coordinate of centre of circular aperture for VBF is given as an integer. Interpreting this as '
-                    'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
-                    'centre.')
-                cy = cy * self.data.axes_manager[-1].scale
-            vbf = self.data.get_integrated_intensity(hs.roi.CircleROI(cx, cy, r, r_inner=r_inner))
+            vbf = self.get_circular_VBF(*args)
         else:
-            raise ValueError('VBF type {type} is not amog supported. Please use either of {supported_types}.'.format(type=type, supported_types=', '.join(supported_types)))
+            raise ValueError(
+                'VBF type {type} is not amog supported. Please use either of {supported_types}.'.format(type=type,
+                                                                                                        supported_types=', '.join(
+                                                                                                            supported_types)))
+
         if isinstance(vbf, (pxm.LazyElectronDiffraction2D, pxm.LazyElectronDiffraction1D)):
             vbf.compute(progressbar=False)
 
         fig = plt.figure()
-        ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[], frameon=False)
-        ax.imshow(vbf.data)
-        #WIP
-
-
+        if len(np.shape(vbf.data)) == 2:
+            ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[], frameon=False)
+            extent = [min(vbf.axes_manager[0].axis), max(vbf.axes_manager[0].axis), min(vbf.axes_manager[1].axis),
+                      max(vbf.axes_manager[1].axis)]
+            ax.imshow(vbf.data, extent=extent, **kwargs)
+            add_scalebar(ax, abs(extent[1] - extent[0]), vbf.axes_manager[0].units, **scalebar_params)
+        elif len(np.shape(vbf.data)) == 1:
+            ax = fig.add_subplot(111)
+            ax.plot(vbf.axes_manager[0].axis, vbf.data, **kwargs)
+        else:
+            raise DimensionError(
+                'Dimension {self.dimension} of {self.data} is not suited for plotting VBF images'.format(self=self))
 
     def write(self, extension, overwrite=False, **kwargs):
         """
