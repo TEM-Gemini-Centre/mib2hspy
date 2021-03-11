@@ -6,6 +6,7 @@ import numpy as np
 from math import nan, isnan, sqrt
 from string import Formatter
 from pandas.core.computation.ops import UndefinedVariableError
+from warnings import warn
 
 
 class Error(Exception):
@@ -207,17 +208,17 @@ class Parameter(object):
                 'Unable to query calibration table for \n"{query}"\ndue to missing (required) columns. Please check that the calibration file column headers for errors. Continuing without calibrating this value.\n'.format(
                     query=query, table=calibrationtable))
         except KeyError as e:
-            print(
+            warn(
                 'No column was found for {key} in \n{calibration_rows}.\nPlease check that the calibration file column headers for errors. Continuing withoug calibrating this value.\n'.format(
                     key=key, calibration_rows=calibration_rows))
         else:
             if len(values) > 0:
                 if len(values) > 1:
-                    print(
+                    warn(
                         'Multiple calibration rows fits with query "{query}".\nUsing last entry.\n'.format(query=query))
                 value = values[-1]
             else:
-                print('No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(
+                warn('No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(
                     self=self, table=calibrationtable, query=query))
                 value = nan
             if bool(print_result):
