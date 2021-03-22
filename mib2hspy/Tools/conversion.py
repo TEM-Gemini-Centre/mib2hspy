@@ -125,6 +125,50 @@ class Converter(object):
         else:
             return 0
 
+    @property
+    def ndx(self):
+        if self.data is not None:
+            return self.data.axes_manager[-2].size
+        else:
+            return 0
+
+    @property
+    def ndy(self):
+        if self.data is not None:
+            return self.data.axes_manager[-1].size
+        else:
+            return 0
+
+    @property
+    def nx(self):
+        if self.dimension >= 3:
+            return self.data.axes_manager[0].size
+        else:
+            return 0
+
+    @property
+    def ny(self):
+        if self.dimension >= 4:
+            return self.data.axes_manager[1].size
+        else:
+            return 0
+
+    @property
+    def image_extent(self):
+        if self.data is not None:
+            return [min(self.data.axes_manager[-2].axis), max(self.data.axes_manager[-2].axis),
+                    min(self.data.axes_manager[-1].axis), max(self.data.axes_manager[-1].axis)]
+        else:
+            raise FileNotSetError('Cannot get image extent when data is not set.')
+
+    @property
+    def scan_extent(self):
+        if self.dimension >= 4:
+            return [min(self.data.axes_manager[0].axis), max(self.data.axes_manager[0].axis),
+                    min(self.data.axes_manager[1].axis), max(self.data.axes_manager[1].axis)]
+        else:
+            raise DimensionError('Cannot get scan extent for data with dimension {self.dimension}'.format(self=self))
+
     def read_mib(self, data_path=None):
         """
         Read a MIB data file
@@ -374,31 +418,63 @@ class Converter(object):
 
         return blo
 
-    def prepare_plot(self, dpi=300, figsize=(3, 3), logarithm=False, inav=None, scalebar=True, **kwargs):
+    def prepare_figure(self, dpi=300, figure_width=3, scan=False):
+        """
+        Prepare a figure for plotting
+        :param dpi: The resolution of the figure
+        :param figure_width: The width of the figure in inches
+        :type dpi: Union[int, float]
+        :type figure_width: Union[int, float]
+        :return: figure, axis
+        """
+
+        if self.data is not None:
+            if scan:
+                figsize = (figure_width, figure_width * self.ny / self.nx)
+            else:
+                figsize = (figure_width, figure_width * self.ndy / self.ndx)
+        else:
+            figsize = (figure_width, figure_width)
+
+        fig = plt.figure(figsize=figsize, dpi=dpi, frameon=False)
+        ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[], frameon=False)
+
+        return fig, ax
+
+    def plot_image(self, dpi=300, figure_width=3, logarithm=False, inav=None, scalebar=True, scalebar_kwargs=None,
+                   **kwargs):
         """
         Prepare a plot/image of the data
 
-        :param dpi: The DPI of the plot. Defailt is 300
-        :param figsize: The figure size in inches. Default is (3,3)
+        :param dpi: The DPI of the figure
+        :param figure_width: The width of the figure in inches.
         :param logarithm: Whether to plot the logarithm of the data or not. Default is False
         :param inav: Which image to extract from a stack to plot. Only used if the data is a stack. Default is None, in which case the first image of the stack will be used.
         :param scalebar: Whether to add a scale bar or not.
+        :param scalebar_kwargs: Keyword arguments to be used for creating scalebars in the plot.
         :param kwargs: Keyword arguments passed to mib2hspy.Tools.plotting.add_scalebar().
         :return: The figure containing the plot
         :rtype: matplotlib.pyplot.Figure
-        :type dpi: int
-        :type figsize: tuple
+        :type dpi: float
+        :type figure_width: float
         :type logarithm: bool
         :type inav: Union[NoneType, int, float, tuple, list]
         :type scalebar: bool
+        :type scalebar_kwargs: Union[None, dict]
         :type kwargs: dict
         """
+
+        if self.data is None:
+            raise FileNotSetError('Cannot plot an image of the data for {self}. Data is not set.'.format(self=self))
+
+        if scalebar_kwargs is None:
+            scalebar_kwargs = {}
 
         if not self.frames == 1:
             warn('Preparing plots for a stack is not advised.')
 
-        fig = plt.figure(dpi=dpi, figsize=figsize, frameon=False)
-        ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[], frameon=False)
+        fig, ax = self.prepare_figure(dpi, figure_width)
+
         if self.dimension == 2:
             image = self.data.data
             units = self.data.axes_manager[0].units
@@ -425,11 +501,59 @@ class Converter(object):
 
         if logarithm:
             image = np.log10(image)
-        extent = [min(self.data.axes_manager[-2].axis), max(self.data.axes_manager[-2].axis),
-                  min(self.data.axes_manager[-1].axis), max(self.data.axes_manager[-1].axis)]
-        ax.imshow(image, extent=extent)
+
+        extent = self.image_extent
+        image_kwargs = {'extent': extent}
+        image_kwargs.update(kwargs)
+
+        ax.imshow(image, **image_kwargs)
         if scalebar:
-            add_scalebar(ax, abs(extent[1] - extent[0]), units=units, **kwargs)
+            add_scalebar(ax, abs(extent[1] - extent[0]), units=units, **scalebar_kwargs)
+
+        return fig
+
+    def plot_vbf(self, kind='box', vbf_kwargs=None, dpi=300, figure_width=3, scalebar=True, scalebar_kwargs=None,
+                 **kwargs):
+        """
+        Plots a virtual bright field image of the data.
+
+        :param kind: What kind of VBF to plot
+        :param vbf_kwargs: Parameters passed to VBF getting function.
+        :param dpi: The dpi of the figure
+        :param figure_width: The width of the figure
+        :param scalebar: Whether to add a scalebar or not
+        :param scalebar_kwargs: Optional keyword arguments passed to scalebar function
+        :param kwargs: Optional keyword arguments passed to matplotlib.pyplot.imshow
+        :type kind: str
+        :type vbf_kwargs: Union[None, dict]
+        :type dpi: Union[int, float]
+        :type figure_width: Union[int, float]
+        :type scalebar: bool
+        :type scalebar_kwargs: Union[None, dict]
+        :type kwargs: dict
+        :return: The created figure object
+        :rtype: matplotlib.pyplot.Figure
+        """
+        if self.data is None:
+            raise FileNotSetError('Cannot plot a VBF of the data for {self}. Data is not set.'.format(self=self))
+
+        if scalebar_kwargs is None:
+            scalebar_kwargs = {}
+
+        if not self.dimension == 4:
+            raise DimensionError('VBF images are not supported for {self.dimension}D data: {self.data}.'.format(self=self))
+
+        fig, ax = self.prepare_figure(dpi, figure_width, scan=True)
+
+        vbf = self.get_VBF(kind, **vbf_kwargs).data
+
+        extent = self.scan_extent
+        image_kwargs = {'extent': extent}
+        image_kwargs.update(kwargs)
+
+        ax.imshow(vbf, **image_kwargs)
+        if scalebar:
+            add_scalebar(ax, abs(extent[1] - extent[0]), units=self.data.axes_manager[0].units, **scalebar_kwargs)
 
         return fig
 
@@ -443,10 +567,10 @@ class Converter(object):
         :return:
         """
         if cx is None:
-            cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size/2)]
+            cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size / 2)]
 
         if cy is None:
-            cy = self.data.axes_manager[-1].axis[int(self.data.axes_manager[-1].size/2)]
+            cy = self.data.axes_manager[-1].axis[int(self.data.axes_manager[-1].size / 2)]
 
         half_width = int(width / 2)
         if isinstance(cy, float) or isinstance(cx, float):
@@ -494,22 +618,17 @@ class Converter(object):
                 'Inner radius of circular aperture for VBF is given as an integer. Interpreting this as '
                 'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
                 'inner radius.')
-            t_inner = r_inner * self.data.axes_manager[-2].scale
+            r_inner = r_inner * self.data.axes_manager[-2].scale
         return self.data.get_integrated_intensity(hs.roi.CircleROI(cx, cy, r, r_inner=r_inner))
 
-    def plot_VBF(self, type, *args, scalebar_params=None, **kwargs):
+    def get_VBF(self, kind, **kwargs):
         """
-        Plot a virtual bright field of the data.
+        get a virtual bright field of the data.
 
-        :param type: The type of VBF. Should be either "box" or "circle".
-        :param args: Arguments passed to VBF generation function (depends on the `type` parameter)
-        :param scalebar_params: Keyword arguments passed to scalebar generation.
-        :param kwargs: Optional Keyword arguments passed to plotting functions (imshow for images and plot for profiles).
+        :param kind: The kind of VBF. Should be either "box" or "circle".
+        :param kwargs: Optional keyword arguments passed to VBF generation function (depends on the `kind` parameter)
         :return:
         """
-
-        if scalebar_params is None:
-            scalebar_params = {}
 
         supported_types = ['box', 'circle']
         if self.data is None:
@@ -518,36 +637,27 @@ class Converter(object):
         if not self.frames > 1:
             warn('{self.data} has only {self.frames} frames. Preparing VBF will result in a single-pixel image')
 
-        if type == 'box':
-            vbf = self.get_square_vbf(*args)
-        elif type == 'circle':
-            vbf = self.get_circular_VBF(*args)
+        if kind == 'box':
+            vbf = self.get_square_vbf(**kwargs)
+        elif kind == 'circle':
+            vbf = self.get_circular_VBF(**kwargs)
         else:
             raise ValueError(
-                'VBF type {type} is not amog supported. Please use either of {supported_types}.'.format(type=type,
-                                                                                                        supported_types=', '.join(
-                                                                                                            supported_types)))
+                'VBF type {kind} is not among supported. Please use either of {supported_types}.'.format(kind=kind,
+                                                                                                         supported_types=', '.join(
+                                                                                                             supported_types)))
 
         if isinstance(vbf, (pxm.LazyElectronDiffraction2D, pxm.LazyElectronDiffraction1D)):
             vbf.compute(progressbar=False)
 
-        fig = plt.figure()
-        if len(np.shape(vbf.data)) == 2:
-            ax = fig.add_axes([0, 0, 1, 1], xticks=[], yticks=[], frameon=False)
-            extent = [min(vbf.axes_manager[0].axis), max(vbf.axes_manager[0].axis), min(vbf.axes_manager[1].axis),
-                      max(vbf.axes_manager[1].axis)]
-            ax.imshow(vbf.data, extent=extent, **kwargs)
-            add_scalebar(ax, abs(extent[1] - extent[0]), vbf.axes_manager[0].units, **scalebar_params)
-        elif len(np.shape(vbf.data)) == 1:
-            ax = fig.add_subplot(111)
-            ax.plot(vbf.axes_manager[0].axis, vbf.data, **kwargs)
-        else:
+        if not (1 <= len(np.shape(vbf.data)) <= 2):
             raise DimensionError(
                 'Dimension {self.dimension} of {self.data} is not suited for plotting VBF images'.format(self=self))
+        return vbf
 
     def write(self, extension, overwrite=False, **kwargs):
         """
-        Writes the file to the provided extension
+        Writes the file with the provided extension
         :param extension: The file type to create
         :type extension: str
         :param overwrite: Whether to overwrite existing data with the given extension
@@ -613,10 +723,10 @@ class Converter(object):
 
         counter = 0
         if xs is None and ys is None:
-            self.prepare_plot(**kwargs).savefig(self.data_path.with_suffix(extension))
+            self.plot_image(**kwargs).savefig(self.data_path.with_suffix(extension))
         elif xs is not None and ys is None:
             for x in xs:
-                self.prepare_plot(inav=x, **kwargs).savefig(self.data_path.with_name(
+                self.plot_image(inav=x, **kwargs).savefig(self.data_path.with_name(
                     '{self.data_path.stem}_{x:07.0f}{extension}'.format(self=self, x=x, extension=extension)))
                 plt.close('all')
                 counter += 1
@@ -625,7 +735,7 @@ class Converter(object):
         elif xs is not None and ys is not None:
             for y in ys:
                 for x in xs:
-                    self.prepare_plot(inav=(x, y), **kwargs).savefig(self.data_path.with_name(
+                    self.plot_image(inav=(x, y), **kwargs).savefig(self.data_path.with_name(
                         '{self.data_path.stem}_{x:06.0f}_{y:06.0f}{extension}'.format(self=self, x=x, y=y,
                                                                                       extension=extension)))
                     plt.close('all')
