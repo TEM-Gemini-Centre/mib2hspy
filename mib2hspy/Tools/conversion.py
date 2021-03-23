@@ -13,6 +13,7 @@ from math import nan, isnan
 from warnings import warn
 
 
+
 class Error(Exception):
     pass
 
@@ -110,6 +111,7 @@ class Converter(object):
                     self._data_path = Path(data_path)
                     self._data = None
                     self._hdr = None
+
 
     @property
     def dimension(self):
