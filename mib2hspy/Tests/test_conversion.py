@@ -441,9 +441,9 @@ class TestValidDiffractionFrameConversion(TestCase):
             self.assertTrue(s.data.dtype, self.converter.data.data.dtype)
 
             # Chunksize
-            # self.assertListEqual(list(s.data.chunks), list(self.converter.data.data.chunks))
-            # self.assertListEqual(list(s.data.chunksize), list(self.converter.data.data.chunksize))
-            # self.assertListEqual(list(s.data.chunksize), [self.chunksize]*2)
+            self.assertListEqual(list(s.data.chunks), list(self.converter.data.data.chunks))
+            self.assertListEqual(list(s.data.chunksize), list(self.converter.data.data.chunksize))
+            self.assertListEqual(list(s.data.chunksize), [self.chunksize]*2)
 
             # Axes_manager values. Since nan==nan -> False, we do not need to check if there are any nans here
             for axis in range(self.converter.dimension):
