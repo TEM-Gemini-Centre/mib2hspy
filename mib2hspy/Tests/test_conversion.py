@@ -469,4 +469,4 @@ class TestValidDiffractionFrameConversion(TestCase):
             self.assertEqual(s.shape[1], self.figsize_inches * self.dpi)
 
     def test_save_plot(self):
-        self.fail()
+        self.skipTest('This test should be covered by the write test.')
