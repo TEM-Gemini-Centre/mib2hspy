@@ -13,7 +13,6 @@ from math import nan, isnan
 from warnings import warn
 
 
-
 class Error(Exception):
     pass
 
@@ -27,6 +26,10 @@ class HDRError(Error):
 
 
 class ReadError(Error):
+    pass
+
+
+class FileNameError(Error):
     pass
 
 
@@ -69,7 +72,6 @@ class Converter(object):
         self._data_path = None
         self._data = None
         self._hdr = None
-        self._chunks = None  # Used for keeping track of the chunking being used.
 
         if not isinstance(microscope_parameters, MicroscopeParameters):
             raise TypeError('Microscope parameters must be given as a MicroscopeParameters object, not {!r}'.format(
@@ -111,7 +113,13 @@ class Converter(object):
                     self._data_path = Path(data_path)
                     self._data = None
                     self._hdr = None
-
+            else:
+                if data_path.exists():
+                    raise FileNameError(
+                        'The file at "{data_path}" exists but is not a valid .mib file.'.format(data_path=data_path))
+                else:
+                    raise FileNameError('The file "{data_path}" does not exist.'.format(data_path=data_path))
+                raise FileNameError('The file "{data_path}" is invalid.'.format(data_path=data_path))
 
     @property
     def dimension(self):
@@ -145,6 +153,8 @@ class Converter(object):
     def nx(self):
         if self.dimension >= 3:
             return self.data.axes_manager[0].size
+        elif self.dimension == 2:
+            return 1
         else:
             return 0
 
@@ -152,6 +162,8 @@ class Converter(object):
     def ny(self):
         if self.dimension >= 4:
             return self.data.axes_manager[1].size
+        elif 2 <= self.dimension <= 3:
+            return 1
         else:
             return 0
 
@@ -165,9 +177,13 @@ class Converter(object):
 
     @property
     def scan_extent(self):
+        if self.data is None:
+            raise FileNotSetError('Cannot get scan extent when data is not set.')
         if self.dimension >= 4:
-            return [min(self.data.axes_manager[0].axis), max(self.data.axes_manager[0].axis),
-                    min(self.data.axes_manager[1].axis), max(self.data.axes_manager[1].axis)]
+            return [min(self.data.axes_manager[self.dimension - 4].axis),
+                    max(self.data.axes_manager[self.dimension - 4].axis),
+                    min(self.data.axes_manager[self.dimension - 3].axis),
+                    max(self.data.axes_manager[self.dimension - 3].axis)]
         else:
             raise DimensionError('Cannot get scan extent for data with dimension {self.dimension}'.format(self=self))
 
@@ -182,33 +198,30 @@ class Converter(object):
         if data_path is not None:
             self.data_path = Path(data_path)
         try:
-            if self.data_path.exists() and self.data_path.is_file():
-                if self.data_path.suffix == '.mib':
-                    try:
-                        self._data = pxm.load_mib(str(self.data_path))
-                    except Exception as e:
-                        raise MIBError(e)
-                    else:
-                        try:
-                            self._hdr = MedipixHDRcontent(self.data_path.with_suffix('.hdr'))
-                            self._hdr.load_hdr()
-                        except Exception as e:
-                            raise HDRError(e)
+            try:
+                self._data = pxm.load_mib(str(self.data_path))
+                if len(self.data == 1):
+                    self._data = self._data.inav[0]  # Get single frame if single-frame stack
+            except Exception as e:
+                raise MIBError(e)
             else:
-                raise FileExistsError('File "{self.data_path}" does not exist.'.format(self=self))
+                try:
+                    self._hdr = MedipixHDRcontent(self.data_path.with_suffix('.hdr'))
+                    self._hdr.load_hdr()
+                except Exception as e:
+                    raise HDRError(e)
         except MIBError as e:
             self._data = None
+            raise ReadError(e)
         except HDRError as e:
             self._hdr = None
-        except FileExistsError:
-            self._data = None
-            self._hdr = None
+            raise e
         finally:
             if self.data is not None:
                 print('Loaded file "{self.data_path}" successfully:\nData: {self.data}\nHDR: {self.hdr}'.format(
                     self=self))
             else:
-                raise ReadError(
+                print(
                     'File "{self.data_path}" was not loaded successfully:\nData: {self.data}\n HDR: {self.hdr}'.format(
                         self=self))
 
@@ -308,7 +321,6 @@ class Converter(object):
             raise ValueError('Chunks {chunks!r} contain non-positive chunk sizes.'.format(chunks=chunks))
 
         self.data.data = self.data.data.rechunk(chunks)  # Rechunk the data.
-        self._chunks = chunks  # Store the chunking that was used.
 
     def downsample(self, bitdepth):
         """
@@ -374,6 +386,8 @@ class Converter(object):
                 self.data.axes_manager[0].units = self.microscope_parameters.scan_step_x.units
                 self.data.axes_manager[1].units = self.microscope_parameters.scan_step_y.units
 
+        self.set_metadata()  # Sets metadata
+
     def prepare_blockfile(self, normalize_intensities=True, logarithmic=True, pixel_size=55):
         """
         Prepare a signal suited for blockfile exportation.
@@ -401,7 +415,7 @@ class Converter(object):
                     self=self))
 
         if not self.dimension > 2:
-            raise BlockfileError(
+            raise DimensionError(
                 'Data must be a scan in order to convert into a blockfile. Dimension of data {self.data!r} is {self.dimension}'.format(
                     self=self))
 
@@ -472,7 +486,7 @@ class Converter(object):
         if scalebar_kwargs is None:
             scalebar_kwargs = {}
 
-        if not self.frames == 1:
+        if self.frames > 1:
             warn('Preparing plots for a stack is not advised.')
 
         fig, ax = self.prepare_figure(dpi, figure_width)
@@ -536,14 +550,12 @@ class Converter(object):
         :return: The created figure object
         :rtype: matplotlib.pyplot.Figure
         """
-        if self.data is None:
-            raise FileNotSetError('Cannot plot a VBF of the data for {self}. Data is not set.'.format(self=self))
-
         if scalebar_kwargs is None:
             scalebar_kwargs = {}
 
         if not self.dimension == 4:
-            raise DimensionError('VBF images are not supported for {self.dimension}D data: {self.data}.'.format(self=self))
+            raise DimensionError(
+                'VBF images are not supported for {self.dimension}D data: {self.data}.'.format(self=self))
 
         fig, ax = self.prepare_figure(dpi, figure_width, scan=True)
 
@@ -568,6 +580,11 @@ class Converter(object):
         :param width: The width of the box.
         :return:
         """
+        if self.data is None:
+            raise FileNotSetError('Cannot plot a VBF of the data for {self}. Data is not set.'.format(self=self))
+        if not self.dimension == 4:
+            raise DimensionError(
+                'VBF images are not supported for {self.dimension}D data: {self.data}.'.format(self=self))
         if cx is None:
             cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size / 2)]
 
@@ -591,6 +608,13 @@ class Converter(object):
         :param r_inner: Inner radius of annular circle.
         :return:
         """
+        if self.data is None:
+            raise FileNotSetError('Cannot plot a VBF of the data for {self}. Data is not set.'.format(self=self))
+
+        if not self.dimension == 4:
+            raise DimensionError(
+                'VBF images are not supported for {self.dimension}D data: {self.data}.'.format(self=self))
+
         if cx is None:
             cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size / 2)]
 
@@ -633,8 +657,6 @@ class Converter(object):
         """
 
         supported_types = ['box', 'circle']
-        if self.data is None:
-            raise FileNotSetError('Cannot plot VBF. File is not set.')
 
         if not self.frames > 1:
             warn('{self.data} has only {self.frames} frames. Preparing VBF will result in a single-pixel image')
@@ -652,6 +674,7 @@ class Converter(object):
         if isinstance(vbf, (pxm.LazyElectronDiffraction2D, pxm.LazyElectronDiffraction1D)):
             vbf.compute(progressbar=False)
 
+        #Check dimensions of VBF image
         if not (1 <= len(np.shape(vbf.data)) <= 2):
             raise DimensionError(
                 'Dimension {self.dimension} of {self.data} is not suited for plotting VBF images'.format(self=self))
@@ -672,8 +695,9 @@ class Converter(object):
             try:
                 if extension == '.blo':
                     self.prepare_blockfile(**kwargs).save(output_path, overwrite=overwrite)
-                if extension in ['.hdf', '.hdf5', '.hspy']:
-                    self.data.save(output_path, overwrite=overwrite, chunks=self._chunks)
+                if extension in ['.hdf5', '.hspy']:
+                    print('Chunksize: {self.data.data.chunksize}'.format(self=self))
+                    self.data.save(output_path, overwrite=overwrite, chunks=self.data.data.chunksize)
                 if extension in ['.png', '.jpg', '.tiff', '.tif']:
                     self.save_plot(extension, **kwargs)
                 else:

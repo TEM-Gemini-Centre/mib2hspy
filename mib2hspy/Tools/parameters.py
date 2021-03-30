@@ -397,6 +397,7 @@ class CalibratedParameter(Parameter):
         else:
             return '{self.value:{f}} ({self.nominal_value:{f}}) {self.units}'.format(self=self, f=format_spec)
 
+
     def nominal_value_is_defined(self):
         """
         Check whether the nominal value of the parameter is well-defined or not (i.e. not `nan`, `None`, `""`, or `"None"`)
