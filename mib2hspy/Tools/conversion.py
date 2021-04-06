@@ -12,7 +12,6 @@ from .plotting import add_scalebar
 from math import nan, isnan
 from warnings import warn
 
-
 class Error(Exception):
     pass
 
@@ -79,7 +78,7 @@ class Converter(object):
         self.microscope_parameters = microscope_parameters
 
     def __repr__(self):
-        return '{self.__class__.__name__}(data_path={self._data_path!r}, microscope_parameters={self._microscope_parameters!r})'.format(
+        return '{self.__class__.__name__}(data_path={self._data_path!r}, microscope_parameters={self.microscope_parameters!r})'.format(
             self=self)
 
     def __str__(self):
@@ -200,7 +199,8 @@ class Converter(object):
         try:
             try:
                 self._data = pxm.load_mib(str(self.data_path))
-                if len(self.data == 1):
+                if len(self.data) == 1:
+                    warn('{self.data} has only {l} frames. Extracting frame'.format(self = self, l=len(self.data)))
                     self._data = self._data.inav[0]  # Get single frame if single-frame stack
             except Exception as e:
                 raise MIBError(e)
@@ -218,8 +218,8 @@ class Converter(object):
             raise e
         finally:
             if self.data is not None:
-                print('Loaded file "{self.data_path}" successfully:\nData: {self.data}\nHDR: {self.hdr}'.format(
-                    self=self))
+                #print('Loaded file "{self.data_path}" successfully:\nData: {self.data}\nHDR: {self.hdr}'.format(self=self))
+                print('Loaded file "{self.data_path}" successfully: {self.data}'.format(self=self))
             else:
                 print(
                     'File "{self.data_path}" was not loaded successfully:\nData: {self.data}\n HDR: {self.hdr}'.format(
@@ -281,7 +281,8 @@ class Converter(object):
         dy = int(dy)
 
         if self.frames == 1:
-            self._data = self.data.inav[0]
+            warn('Reshaping {self.data} with {self.frames} is not supported'.format(self=self))
+            pass#self._data = self.data.inav[0]
         else:
             if nx < 0 or ny < 0:
                 raise ReshapeError('Scan dimensions {x}x{y} are not valid.'.format(x=nx, y=ny))
@@ -552,6 +553,8 @@ class Converter(object):
         """
         if scalebar_kwargs is None:
             scalebar_kwargs = {}
+        if vbf_kwargs is None:
+            vbf_kwargs = {}
 
         if not self.dimension == 4:
             raise DimensionError(
@@ -587,16 +590,24 @@ class Converter(object):
                 'VBF images are not supported for {self.dimension}D data: {self.data}.'.format(self=self))
         if cx is None:
             cx = self.data.axes_manager[-2].axis[int(self.data.axes_manager[-2].size / 2)]
+        elif isinstance(cx, int):
+            cx = self.data.axes_manager[-2].axis[cx]
 
         if cy is None:
             cy = self.data.axes_manager[-1].axis[int(self.data.axes_manager[-1].size / 2)]
+        elif isinstance(cy, int):
+            cy = self.data.axes_manager[-1].axis[cy]
+
+        if width is None:
+            width = 10
 
         half_width = int(width / 2)
         if isinstance(cy, float) or isinstance(cx, float):
             half_width *= self.data.axes_manager[-2].scale
 
-        return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(
-            axis=np.arange(self.dimension - 2, self.dimension))
+        return self.data.get_integrated_intensity(pxm.roi.RectangularROI(cx - half_width, cy - half_width, cx + half_width, cy + half_width))
+        #return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(
+        #    axis=np.arange(self.dimension - 2, self.dimension))
 
     def get_circular_VBF(self, cx=None, cy=None, r=10, r_inner=0):
         """
@@ -621,13 +632,19 @@ class Converter(object):
         if cy is None:
             cy = self.data.axes_manager[-1].axis[int(self.data.axes_manager[-1].size / 2)]
 
+        if r is None:
+            r = 10
+
+        if r_inner is None:
+            r_inner = 0
+
         if isinstance(cx, int):
             warn(
                 'X coordinate of centre of circular aperture for VBF is given as an integer. Interpreting this as '
                 'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
                 'centre.')
             cx = self.data.axes_manager[-2].axis[cx]
-        if isinstance(cx, int):
+        if isinstance(cy, int):
             warn(
                 'Y coordinate of centre of circular aperture for VBF is given as an integer. Interpreting this as '
                 'a pixel coordinate and transforming it into a scaled coordinate when determining the circle '
@@ -676,8 +693,7 @@ class Converter(object):
 
         #Check dimensions of VBF image
         if not (1 <= len(np.shape(vbf.data)) <= 2):
-            raise DimensionError(
-                'Dimension {self.dimension} of {self.data} is not suited for plotting VBF images'.format(self=self))
+            warn('VBF image {vbf} was created with irregular dimensions.'.format(vbf=vbf))
         return vbf
 
     def write(self, extension, overwrite=False, **kwargs):
@@ -695,10 +711,9 @@ class Converter(object):
             try:
                 if extension == '.blo':
                     self.prepare_blockfile(**kwargs).save(output_path, overwrite=overwrite)
-                if extension in ['.hdf5', '.hspy']:
-                    print('Chunksize: {self.data.data.chunksize}'.format(self=self))
+                elif extension in ['.hdf5', '.hspy']:
                     self.data.save(output_path, overwrite=overwrite, chunks=self.data.data.chunksize)
-                if extension in ['.png', '.jpg', '.tiff', '.tif']:
+                elif extension in ['.png', '.jpg', '.tiff', '.tif']:
                     self.save_plot(extension, **kwargs)
                 else:
                     self.data.save(output_path, overwrite=overwrite)
@@ -716,7 +731,13 @@ class Converter(object):
         try:
             num_frames = kwargs.pop('num_frames')
         except KeyError:
-            num_frames = np.inf
+            if self.frames <= 5:
+                num_frames = self.frames
+            else:
+                num_frames = 5
+        if num_frames > self.frames:
+            warn('The number of requested frames ({num_frames}) exceeds the total number of frames in the stack ({self.frames}). The complete stack will be saved as individual images.'.format(num_frames=num_frames, self=self))
+            num_frames = self.frames
 
         # Determine wich frames to extract.
         if self.frames > 1:  # is a stack

@@ -27,7 +27,7 @@ setup(
         "pathlib",
         "tabulate",
         "datetime",
-        "pandas"
+        "pandas",
     ],
     package_data={
         "": ["LICENSE", "README.md"],
