@@ -656,7 +656,7 @@ class DiffractionScale(Scale):
 
     def to_inv_nm(self, acceleration_voltage, inplace=False):
         new_scale = self.to_inv_angstroms(acceleration_voltage)
-        new_scale /= 10
+        new_scale *= 10
         new_scale.units = '1/nm'
         if inplace:
             self.scale = new_scale.scale
