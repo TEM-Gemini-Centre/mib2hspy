@@ -13,13 +13,7 @@ conda create -n mib2hpsy python=3.8
 conda activate mib2hpsy
 ```` 
 
-Then install some of the required packages.
-```shell script
-conda install hyperspy=1.5.2 -c conda-forge
-conda install pyxem=0.12 -c conda-forge
-```
-
-Finally, install mib2hspy along with some minor required packages that require no specific version. This is easiest to do by navigating to the folder that contains mib2hspys `setup.py` and running:
+Next, install mib2hspy as an editable package, along with some minor required packages that require no specific version. This is easiest to do by navigating to the folder that contains mib2hspys `setup.py` and running:
 ```shell script
 pip install --editable .
 ```
@@ -28,6 +22,61 @@ This will make mib2hspy available to your python environment, and make it possib
 To use the GUI parts of mib2hspy, your python environment will need PyQt5, which might or might not be simple to install (it might already be installed). From experience, issues arising from PyQt5 incompatibilities are best solved on a case-to-case basis, and this guide will not cover these issues. 
 
 ## Usage
+mib2hspy centers around the `Converter` and `MicroscopeParameters` objects. `Converter` objects are used to set up the conversion and is connected to a `MicroscopeParameters` object that handles the microscope metadata and calibrations.
+
+### Microscope parameters
+The `MicroscopeParameters` object has attributes related to 
+```python
+
+```
+
+### Converter
+
+```python
+
+```
+
+### Typical workflow
+A typical conversion workflow might look like this:
+```python
+import mib2hspy as m2h
+import pandas as pd
+from math import nan
+
+table = pd.read_excel(r'Calibrations.xlsx', engine='openpyxl') #The calibration table to be used for calibrating the microscope parameters.
+
+parameters = m2h.MicroscopeParameters()
+parameters.acceleration_voltage = 200E3 #The acceleration voltage in V
+parameters.cameralength = (12, nan) #(Nominal value, calibrated value). The calibrated value will be calibrated later if a match is found in the calibration table.
+parameters.scan_step_x = (8, 8) #The scan step in slow scan-direction. Setting both nominal and calibrated value ensures a value is set. Calibrated value will be changed if a matching value is found in the calibration table.
+parameters.scan_step_y = (8, 8) #The scan step in fast scan-direction. Setting both nominal and calibrated value ensures a value is set. Calibrated value will be changed if a matching value is found in the calibration table.
+parameters.camera = 'Merlin' #The camera label to search for in the calibration table
+parameters.microscope = '2100F' #The microscope name to search for in the calibration table
+parameters.alpha = 1 #The microscope alpha-setting to search for in the calibration table
+parameters.spotsize = (0.5, 36) #The nominal spotsize of the microscope and the actual beam size - only for information at the moment
+parameters.mode = 'NBD' #The microscope mode setting to search for in the calibration table
+parameters.acquisition_date = '18/03/2021' #The date of the experiment - only for information at the moment
+parameters.convergence_angle = (nan, 0.205) #The convergence semi-angle of the beam - only for information
+parameters.set_values_from_calibrationtable(table)
+
+converter = m2h.Converter(microscope_parameters=parameters) #Create a converter object connected to the microscope parameters.
+converter.data_path = r'C:\Users\emilc\OneDrive - NTNU\NORTEM\Merlin\LFO\2021_03_18_P40204PV04\SED_256x256x1_8x8nm_NBD_alpha1_spot05nm_CL3-7D11_IL1-4C92_CL12cm.mib' #Set the data path to use
+
+converter.read_mib() #Read the data
+converter.reshape(256, 256) #Reshape the stack
+converter.rechunk(32) #Rechunk the stack
+converter.apply_calibrations() #Apply calibrations to the data. Sets the signal.axes_manager values to corresponding values in the `parameters` object
+converter.set_metadata() #Set the metadata. Adds the complete parameters list to the original_metadarta of the signal
+print(converter) #Print the converter object
+
+fig = converter.plot_vbf() #Plot a VBF of the data
+fig.savefig(converter.data_path.with_suffix('.png')) #Save the VBF. The converter.data_path is stored as a pathlib.Path variable, allowing nifty path operations such as `.with_suffix(...)`.
+
+converter.write('.hspy', overwrite=True) #Save the data into the given format. Will be saved in same directory and same name as the original data.
+```
+
+In the first part of this code, a `MicroscopeParameters` object is created. These objects has two main types of attributes, namely `Parameter` objects and the derived `CalibratedParameter` object. These kind of objects have some helpful functions and attributes to keep track of them. A `Parameter` object has `Parameter.value`, `Parameter.units`, and `Parameter.name` properties, while the `CalibratedParameter` object also has the `CalibratedParameter.nominal_value` property. The values of a `Parameter` or a `CalibratedParameter` object in a `MicroscopeParameters` object can be set directly by `parameters.<parameter> = <value>`. This will set the `<parameter>.value` attribute to the specified value. The `value` and `nominal_value` of a `CalibratedParameter` objects in a `MicroscopeParameters` object can be set directly by `parameters.<calibrated_parameter> = (<nominal_value>, <value>)`.
+
 You can use the separate tools in mib2hspy in any way you want, but most of the tools are made to work in a provided GUI. There are two main GUI tools, one for converting .mib stacks and one for converting .mib frames. The first GUI is run by calling `mib2hspy.run_gui()`, while the latter is run by calling `mib2hspy.run_converter_gui()`. You can run these GUIs from the command line like this:
 ```shell script
 conda activate mib2hspy

@@ -20,7 +20,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "PyQt5",
-        "hyperspy==1.5.2",
+        "hyperspy",
         "pyxem",
         "numpy",
         "matplotlib",
@@ -28,6 +28,7 @@ setup(
         "tabulate",
         "datetime",
         "pandas",
+        "openpyxl",
     ],
     package_data={
         "": ["LICENSE", "README.md"],

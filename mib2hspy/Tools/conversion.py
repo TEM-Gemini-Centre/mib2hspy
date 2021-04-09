@@ -186,19 +186,26 @@ class Converter(object):
         else:
             raise DimensionError('Cannot get scan extent for data with dimension {self.dimension}'.format(self=self))
 
-    def read_mib(self, data_path=None):
+    def read_mib(self, data_path=None, hdf=False):
         """
         Read a MIB data file
 
-        :param data_path: Path to the .mib file
-        :type data_path: Union[str, Path]
+        :param data_path: Path to the .mib file. Default is None, which will use the preset datapath of the converter
+        :param hdf: Whether to convert file to .h5 first or not. Default is False. Only works for Quad-data at the moment.
+        :type data_path: Union[NoneType, str, Path]
+        :type hdf: bool
         :return:
         """
+
         if data_path is not None:
             self.data_path = Path(data_path)
         try:
             try:
-                self._data = pxm.load_mib(str(self.data_path))
+                if hdf:
+                    pxm.utils.io_utils.mib_to_h5stack(str(self.data_path), str(self.data_path.with_suffix('.h5'))) #Convert to h5 file
+                    self._data = pxm.utils.io_utils.h5stack_to_pxm(str(self.data_path.with_suffix('.h5')), str(self.data_path))
+                else:
+                    self._data = pxm.load_mib(str(self.data_path))
                 if len(self.data) == 1:
                     warn('{self.data} has only {l} frames. Extracting frame'.format(self = self, l=len(self.data)))
                     self._data = self._data.inav[0]  # Get single frame if single-frame stack
@@ -293,7 +300,7 @@ class Converter(object):
                         self=self, nx=nx, ny=ny))
 
             # Reshape the data and convert new signal.
-            self._data = pxm.LazyElectronDiffraction2D(
+            self._data = pxm.signals.LazyElectronDiffraction2D(
                 self.data.data.reshape((nx, ny, dx, dy)))  # How to retain metadata?
 
     def rechunk(self, chunks):
@@ -405,12 +412,12 @@ class Converter(object):
         if self.data is None:
             raise FileNotSetError('Cannot prepare blockfile. File is not set.')
 
-        if not isinstance(self.data, (pxm.ElectronDiffraction2D, pxm.LazyElectronDiffraction2D)):
+        if not isinstance(self.data, (pxm.signals.ElectronDiffraction2D, pxm.signals.LazyElectronDiffraction2D)):
             raise BlockfileError(
                 'Can only prepare blockfiles for ElectronDiffraction2D and LazyElectronDiffraction2D signal types, not {self.data!r}'.format(
                     self=self))
 
-        if not isinstance(self.data, pxm.LazyElectronDiffraction2D):
+        if not isinstance(self.data, pxm.signals.LazyElectronDiffraction2D):
             warn(
                 'It is advised to prepare blockfiles based on lazy electron diffraction data, not {self.data}, as the process require copying the signal.'.format(
                     self=self))
@@ -605,9 +612,8 @@ class Converter(object):
         if isinstance(cy, float) or isinstance(cx, float):
             half_width *= self.data.axes_manager[-2].scale
 
-        return self.data.get_integrated_intensity(pxm.roi.RectangularROI(cx - half_width, cy - half_width, cx + half_width, cy + half_width))
-        #return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(
-        #    axis=np.arange(self.dimension - 2, self.dimension))
+        #return self.data.get_integrated_intensity(hs.roi.RectangularROI(cx - half_width, cy - half_width, cx + half_width, cy + half_width))
+        return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(axis=np.arange(self.dimension - 2, self.dimension))
 
     def get_circular_VBF(self, cx=None, cy=None, r=10, r_inner=0):
         """
@@ -688,7 +694,7 @@ class Converter(object):
                                                                                                          supported_types=', '.join(
                                                                                                              supported_types)))
 
-        if isinstance(vbf, (pxm.LazyElectronDiffraction2D, pxm.LazyElectronDiffraction1D)):
+        if isinstance(vbf, (pxm.signals.LazyElectronDiffraction2D, pxm.signals.LazyElectronDiffraction1D)):
             vbf.compute(progressbar=False)
 
         #Check dimensions of VBF image
