@@ -321,7 +321,7 @@ class Converter(object):
             # Extract metadata (and remove any hidden fields. These hidden fields will mess up saving a reshaped or a rechunked signal!
             metadata = self.data.metadata.as_dictionary()
             original_metadata = self.data.original_metadata.as_dictionary()
-            #remove_dictionary_field(metadata, patterns=['_']) #Remove any fields that starts with "_" - these hidden fields messes up saving.
+            # remove_dictionary_field(metadata, patterns=['_']) #Remove any fields that starts with "_" - these hidden fields messes up saving.
 
             self._data = pxm.signals.LazyElectronDiffraction2D(
                 self.data.data.reshape((nx, ny, dx, dy)))
@@ -856,10 +856,11 @@ class Converter(object):
                 try:
                     self.microscope_parameters.calibrate_parameter(parameter, self.calibration_table, *args, **kwargs)
                 except CalibrationError as e:
-                    logging.info('Ignoring calibration error when calibration {parameter!r}.'.format(parameter=parameter))
+                    logging.info(
+                        'Ignoring calibration error when calibration {parameter!r}.'.format(parameter=parameter))
         else:
-            logging.info('No Calibration table set for converter. Cannot calibrate directly. Please calibrate the microscope parameters object instead.')
-
+            logging.info(
+                'No Calibration table set for converter. Cannot calibrate directly. Please calibrate the microscope parameters object instead.')
 
     def calibrate_cameralength(self):
         logging.info('Calibrating cameralength...')
@@ -894,7 +895,6 @@ class Converter(object):
             logging.info('Cannot calibrate diffraction scale. No calibration table set for converter.')
 
 
-
 def remove_dictionary_field(dictionary, keys=[], patterns=[]):
     """
     Removes fields in a dictionary
@@ -920,7 +920,8 @@ def remove_dictionary_field(dictionary, keys=[], patterns=[]):
         else:
             logging.getLogger().debug('Removed key {key} from {dictionary}.'.format(key=key, dictionary=dictionary))
 
-    dictionary_keys = list(dictionary.keys()) #Get a static list of dictionary keys. Cannot iterate directly over dictionaries while chaning them!
+    dictionary_keys = list(
+        dictionary.keys())  # Get a static list of dictionary keys. Cannot iterate directly over dictionaries while chaning them!
     for key in dictionary_keys:
         if isinstance(key, str):
             if key.startswith(tuple(patterns)):
