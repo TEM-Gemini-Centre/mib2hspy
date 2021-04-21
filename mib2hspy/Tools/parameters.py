@@ -7,6 +7,8 @@ from math import nan, isnan, sqrt
 from string import Formatter
 from pandas.core.computation.ops import UndefinedVariableError
 from warnings import warn
+import logging
+from sys import exc_info
 
 
 class Error(Exception):
@@ -204,22 +206,26 @@ class Parameter(object):
             key = '{self.name} ({self.units})'.format(self=self)
             values = calibration_rows[key].values  # Get the actual values from the calibration rows.
         except UndefinedVariableError:
-            print(
+            logging.getLogger().debug(
                 'Unable to query calibration table for \n"{query}"\ndue to missing (required) columns. Please check that the calibration file column headers for errors. Continuing without calibrating this value.\n'.format(
-                    query=query, table=calibrationtable))
+                    query=query, table=calibrationtable), exc_info=exc_info())
         except KeyError as e:
-            warn(
+            logging.getLogger().debug(
                 'No column was found for {key} in \n{calibration_rows}.\nPlease check that the calibration file column headers for errors. Continuing withoug calibrating this value.\n'.format(
-                    key=key, calibration_rows=calibration_rows))
+                    key=key, calibration_rows=calibration_rows), exc_info=exc_info())
         else:
             if len(values) > 0:
                 if len(values) > 1:
-                    warn(
-                        'Multiple calibration rows fits with query "{query}".\nUsing last entry.\n'.format(query=query))
+                    logging.getLogger().info(
+                        'Multiple calibration rows fits with query "{query}".\nUsing last entry.'.format(query=query))
                 value = values[-1]
             else:
-                warn('No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(
-                    self=self, table=calibrationtable, query=query))
+                #logging.getLogger().info(
+                #    'No calibration found for {self!r}'.format(
+                #        self=self, table=calibrationtable, query=query))
+                logging.getLogger().debug(
+                    'No calibration found for {self!r} in calibration table after querying for "{query}".\n'.format(
+                        self=self, table=calibrationtable, query=query))
                 value = nan
             if bool(print_result):
                 print('Result from query "{query}" to calibration table: {value!r}\n'.format(query=query,
@@ -361,7 +367,8 @@ class CalibrationQueryFormatter(QueryFormatter):
         required_parameters = [self.microscope_parameters.acceleration_voltage, self.microscope_parameters.microscope]
         parameters = [arg for arg in args]
         [parameters.append(required_parameter) for required_parameter in required_parameters]
-        return ' & '.join([super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
+        return ' & '.join(
+            [super(CalibrationQueryFormatter, self).convert_field(parameter, 'q') for parameter in parameters])
 
 
 class CalibratedParameter(Parameter):
@@ -396,7 +403,6 @@ class CalibratedParameter(Parameter):
             return QueryFormatter().format('{self!q}'.format(self=self))
         else:
             return '{self.value:{f}} ({self.nominal_value:{f}}) {self.units}'.format(self=self, f=format_spec)
-
 
     def nominal_value_is_defined(self):
         """
@@ -522,8 +528,9 @@ class ScanStep(CalibratedParameter):
     def __init__(self, actual_step, nominal_step, direction, units='nm'):
         direction = str(direction)
         if len(direction) > 1:
-            print('Direction for scan step is specified as a string with {n} characters: {direction}'.format(
-                n=len(direction), direction=direction))
+            logging.getLogger().warning(
+                'Direction for scan step is specified as a string with {n} characters: {direction}'.format(
+                    n=len(direction), direction=direction))
         else:
             direction = direction.capitalize()
 
@@ -978,6 +985,18 @@ class MicroscopeParameters(object):
         for parameter in self._parameters:
             yield parameter
 
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return list(self)[item]
+        elif isinstance(item, Parameter):
+            for param in self:
+                if param is Parameter:
+                    return param
+            raise IndexError('{item!r} is not a parameter of {self}')
+        else:
+            raise TypeError(
+                '{self.__class__.__name__} cannot be indexed by objects of type {t}.'.format(self=self, t=type(item)))
+
     def set_acceleration_voltage(self, acceleration_voltage):
         """
         Sets the acceleration voltage of the microscope
@@ -1222,6 +1241,162 @@ class MicroscopeParameters(object):
         """
         self._microscope.set_value(microscope)
 
+    def calibrate_cameralength(self, calibrationtable, *args, **kwargs):
+        """
+        Calibrates the cameralength.
+
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParameters.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :return:
+        """
+        logging.debug('Calibrating cameralength')
+        self.calibrate_parameter(self.cameralength, calibrationtable, *args, **kwargs)
+
+    def calibrate_magnification(self, calibrationtable, *args, **kwargs):
+        """
+        Calibrates the magnification
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParameters.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :return:
+        """
+        logging.debug('Calibrating magnification')
+        self.calibrate_parameter(self.magnification, calibrationtable, *args, **kwargs)
+
+    def calibrate_rocking_angle(self, calibrationtable, *args, **kwargs):
+        """
+        Calibrates the rocking angle
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParameters.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :return:
+        """
+        logging.debug('Calibrating rocking angle')
+        self.calibrate_parameter(self.rocking_angle, calibrationtable, *args, **kwargs)
+
+    def calibrate_image_scale(self, calibrationtable, calibrate_magnification=True, *args, **kwargs):
+        """
+        Calibrates the image scale
+
+        :param calibrate_magnification: Whether to calibrate the magnification first or not. Default is True
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParametrs.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :type calibrate_magnification: bool
+        :return:
+        """
+        if calibrate_magnification:
+            self.calibrate_parameter(self.magnification, calibrationtable, *args, **kwargs)
+        logging.debug('Calibrating image scale')
+        self.calibrate_parameter(self.image_scale, calibrationtable, *args, **kwargs)
+
+    def calibrate_diffraction_scale(self, calibrationtable, calibrate_cameralength=True, *args, **kwargs):
+        """
+        Calibrates the diffraction scale
+
+        :param calibrate_cameralength: Whether to calibrate the cameralength first or not. Default is True
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParametrs.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :type calibrate_cameralength: bool
+        :return:
+        """
+        if calibrate_cameralength:
+            self.calibrate_cameralength(calibrationtable, *args, **kwargs)
+        logging.debug('Calibrating diffraction scale')
+        self.calibrate_parameter(self.diffraction_scale, calibrationtable, *args, **kwargs)
+
+    def calibrate_stepsize_x(self, calibrationtable, *args, **kwargs):
+        """
+        Calibrates the stepsize in the x-direction
+
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParametrs.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :return:
+        """
+        self.calibrate_parameter(self.scan_step_x, calibrationtable, *args, **kwargs)
+
+    def calibrate_stepsize_y(self, calibrationtable, *args, **kwargs):
+        """
+        Calibrates the stepsize in the y-direction
+
+        :param calibrationtable: Calibration table used for calibration
+        :param args: Positional arguments passed to MicroscopeParameters.calibrate()
+        :param kwargs: Keyword arguments passed to MicroscopeParametrs.calibrate()
+        :type calibrationtable: pandas.DataFrame
+        :return:
+        """
+        self.calibrate_parameter(self.scan_step_y, calibrationtable, *args, **kwargs)
+
+    def calibrate_parameter(self, parameter, calibrationtable, print_results=False):
+        """
+        Calibrates the given parameter based on a calibration table
+
+        :param parameter: The parameter to calibrate. Must be one of the parameters that belong to the current microscope parameters object.
+        :param calibrationtable: The calibration table.
+        :param print_results: Whether to print the results or not
+        :type calibrationtable: pd.DataFrame
+        :type parameter: Parameter
+        :type print_results: bool
+        :return:
+        """
+        query_formatter = CalibrationQueryFormatter(self)
+        try:
+            try:
+                query = query_formatter(parameter)
+            except Exception as e:
+                raise CalibrationError(e)
+            else:
+                try:
+                    if isinstance(parameter, CalibratedParameter):
+                        if parameter.nominal_value_is_defined():
+                            parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
+                        else:
+                            #logging.info('{parameter!r} is not calibrated. Its nominal value is not properly defined.'.format(parameter=parameter))
+                            logging.debug('Nominal value of {parameter!r} cannot be calibrated.'.format(parameter=parameter))
+                    else:
+                        parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
+                except UndefinedVariableError as e:
+                    logging.info(
+                        '{parameter} could not be calibrated. There are probably missing headers in the calibration table'.format(
+                            parameter=parameter))
+                    logging.debug(
+                        'Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value'.format(
+                            query=query, table=calibrationtable))
+        except CalibrationError as e:
+            logging.info(
+                'Calibration error encountered when calibrating {parameter!r}.'.format(parameter=parameter))
+            logging.debug(
+                'Calibration error encountered when calibrating {parameter!r}.'.format(parameter=parameter))
+            raise e
+
+    def calibrate(self, calibrationtable, all=False):
+        """
+        Calibrates the parameters of the microscope
+
+        :param calibrationtable: The calibration table
+        :type calibrationtable: pandas.DataFrame
+        :return:
+        """
+        if all:
+            [self.calibrate_parameter(parameter, calibrationtable) for parameter in self if isinstance(parameter, CalibratedParameter)]
+            self.calibrate_parameter(self.image_scale, calibrationtable)
+            self.calibrate_parameter(self.diffraction_scale, calibrationtable)
+        else:
+            self.calibrate_magnification(calibrationtable)
+            self.calibrate_cameralength(calibrationtable)
+            self.calibrate_rocking_angle(calibrationtable)
+            self.calibrate_image_scale(calibrationtable, calibrate_magnification=False)
+            self.calibrate_diffraction_scale(calibrationtable, calibrate_cameralength=False)
+
     def set_values_from_calibrationtable(self, calibrationtable, print_results=False):
         """
         Sets the values of CalibratedParameters based on a calibration table.
@@ -1242,13 +1417,19 @@ class MicroscopeParameters(object):
                         try:
                             parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
                         except UndefinedVariableError:
-                            print(
+                            logging.getLogger().info(
+                                '{parameter} could not be calibrated. There are probably missing headers in the calibration table'.format(
+                                    parameter=parameter))
+                            logging.getLogger().debug(
                                 'Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value.'.format(
-                                    query=query, table=calibrationtable))
+                                    query=query, table=calibrationtable), exc_info=exc_info())
             except CalibrationError as e:
-                print(
-                    'Calibration error occurred when calibrating parameter {parameter!r}:\n{e}.\nContinuing without calibrating this value.'.format(
-                        parameter=parameter, e=e))
+                logging.getLogger().info(
+                    'Calibration error occurred when calibrating parameter {parameter!r}. Continuing without calibrating this value.'.format(
+                        parameter=parameter))
+                logging.getLogger().debug(
+                    'Calibration error occurred when calibrating parameter {parameter!r}. Continuing without calibrating this value.'.format(
+                        parameter=parameter), exc_info=exc_info())
                 raise e
 
         # Calibrate the scales after all the calibrated parameters have been set.
@@ -1262,13 +1443,19 @@ class MicroscopeParameters(object):
                     try:
                         parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
                     except UndefinedVariableError:
-                        print(
+                        logging.getLogger().info(
+                            '{parameter} could not be calibrated. There are probably missing headers in the calibration table'.format(
+                                parameter=parameter))
+                        logging.getLogger().debug(
                             'Query {query} did not yield any matches in {table!r}. Continuing without calibrating this value.'.format(
-                                query=query, table=calibrationtable))
+                                query=query, table=calibrationtable), exc_info=exc_info())
             except CalibrationError as e:
-                print(
-                    'Calibration error occurred when calibrating parameter {parameter!r}:\n{e}.\nContinuing without calibrating this value.'.format(
-                        parameter=parameter, e=e))
+                logging.getLogger().info(
+                    'Calibration error occurred when calibrating parameter {parameter!r}. Continuing without calibrating this value.'.format(
+                        parameter=parameter))
+                logging.getLogger().debug(
+                    'Calibration error occurred when calibrating parameter {parameter!r}. Continuing without calibrating this value.'.format(
+                        parameter=parameter), exc_info=exc_info())
                 raise e
 
     def get_parameters(self):
@@ -1387,6 +1574,19 @@ class MicroscopeParameters(object):
         else:
             params = defined_parameters
         return params
+
+    def get_calibration_parameters(self):
+        """
+        Returns the most useful calibration parameters.
+        :return:
+        """
+        return [
+            self.cameralength,
+            self.magnification,
+            self.rocking_angle,
+            self.image_scale,
+            self.diffraction_scale
+        ]
 
 
 class Detector(object):

@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1294</width>
-    <height>832</height>
+    <width>1120</width>
+    <height>747</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -192,7 +192,7 @@
          <enum>QTabWidget::North</enum>
         </property>
         <property name="currentIndex">
-         <number>0</number>
+         <number>1</number>
         </property>
         <widget class="QWidget" name="tab">
          <attribute name="title">
@@ -1758,8 +1758,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1294</width>
-     <height>26</height>
+     <width>1120</width>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">

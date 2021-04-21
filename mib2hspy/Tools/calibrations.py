@@ -2,7 +2,8 @@ import pandas as pd
 import datetime as dt
 import re
 from math import nan, sqrt, pi, atan, tan, isnan
-
+import logging
+from sys import exc_info
 
 class Calibration(object):
     def __init__(self, nominal_value, actual_value, units, name, date, label=None):
@@ -806,8 +807,7 @@ class Deflector(object):
             try:
                 dataframe[name] = [value]
             except Exception as e:
-                print(name, value)
-                raise e
+                logging.getLogger().error(e, exc_info=exc_info())
 
 
 def wavelength(V, m0=9.1093837015 * 1e-31, e=1.60217662 * 1e-19, h=6.62607004 * 1e-34, c=299792458):
@@ -955,7 +955,7 @@ def generate_from_dataframe(dataframe):
                                    microscope=microscope)
             calibrations += calibration
         else:
-            print('Did not recognize label {label}. Cannot generate calibration object.'.format(label=label))
+            logging.getLogger().info('Did not recognize label {label}. Cannot generate calibration object.'.format(label=label))
 
     return calibrations
 

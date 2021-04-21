@@ -3,7 +3,7 @@ import pandas as pd
 import traceback
 
 from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QAbstractTableModel, QRunnable
+from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QAbstractTableModel, QRunnable, QAbstractItemModel
 from PyQt5.QtGui import QPixmap
 
 from pathlib import Path
@@ -161,6 +161,17 @@ class DataFrameModel(QAbstractTableModel):
         }
         return roles
 
+class DictionaryTreeModel(QAbstractItemModel):
+    def __init__(self, dictionary = {}, parent=None):
+        super(DictionaryTreeModel, self).__init__(parent=parent)
+        self._dictionary = dict(dictionary)
+
+    def set_dictionary(self, dictionary):
+        self.beginResetModel()
+        self._dictionary = dict(dictionary)
+        self.endResetModel()
+
+    #def
 
 class Error(Exception):
     pass

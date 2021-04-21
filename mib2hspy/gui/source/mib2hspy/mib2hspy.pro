@@ -10,22 +10,15 @@ CONFIG += c++11
 
 SOURCES += \
     main.cpp \
-    mib2hspymainwindow.cpp
+    mainwindow.cpp
 
 HEADERS += \
-    mib2hspymainwindow.h
+    mainwindow.h
+
+FORMS += \
+    mainwindow.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
-
-FORMS += \
-    mainwindow.ui \
-    mainwindow1.ui \
-    noteswindow.ui \
-    parameterswindow.ui \
-    settingsdialog.ui \
-    stackWizard.ui \
-    supportingdatawindow.ui \
-    calibratewindow.ui

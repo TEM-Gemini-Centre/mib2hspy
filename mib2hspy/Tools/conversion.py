@@ -5,12 +5,15 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import sys
 
 from .hdrtools import MedipixHDRcontent
 from .parameters import MicroscopeParameters
 from .plotting import add_scalebar
 from math import nan, isnan
 from warnings import warn
+import logging
+
 
 class Error(Exception):
     pass
@@ -71,6 +74,7 @@ class Converter(object):
         self._data_path = None
         self._data = None
         self._hdr = None
+        self._calibration_table = None
 
         if not isinstance(microscope_parameters, MicroscopeParameters):
             raise TypeError('Microscope parameters must be given as a MicroscopeParameters object, not {!r}'.format(
@@ -119,6 +123,17 @@ class Converter(object):
                 else:
                     raise FileNameError('The file "{data_path}" does not exist.'.format(data_path=data_path))
                 raise FileNameError('The file "{data_path}" is invalid.'.format(data_path=data_path))
+
+    @property
+    def calibration_table(self):
+        return self._calibration_table
+
+    @calibration_table.setter
+    def calibration_table(self, table):
+        if not isinstance(table, pd.DataFrame):
+            raise TypeError('Only pandas.DataFrame object can be set as calibration tables')
+        self._calibration_table = table
+        self.microscope_parameters.set_values_from_calibrationtable(self._calibration_table)
 
     @property
     def dimension(self):
@@ -202,13 +217,16 @@ class Converter(object):
         try:
             try:
                 if hdf:
-                    pxm.utils.io_utils.mib_to_h5stack(str(self.data_path), str(self.data_path.with_suffix('.h5'))) #Convert to h5 file
-                    self._data = pxm.utils.io_utils.h5stack_to_pxm(str(self.data_path.with_suffix('.h5')), str(self.data_path))
+                    pxm.utils.io_utils.mib_to_h5stack(str(self.data_path),
+                                                      str(self.data_path.with_suffix('.h5')))  # Convert to h5 file
+                    self._data = pxm.utils.io_utils.h5stack_to_pxm(str(self.data_path.with_suffix('.h5')),
+                                                                   str(self.data_path))
                 else:
                     self._data = pxm.load_mib(str(self.data_path))
                 if len(self.data) == 1:
-                    warn('{self.data} has only {l} frames. Extracting frame'.format(self = self, l=len(self.data)))
+                    warn('{self.data} has only {l} frames. Extracting frame'.format(self=self, l=len(self.data)))
                     self._data = self._data.inav[0]  # Get single frame if single-frame stack
+                self._data.metadata.General.title = str(self.data_path.stem)
             except Exception as e:
                 raise MIBError(e)
             else:
@@ -225,10 +243,10 @@ class Converter(object):
             raise e
         finally:
             if self.data is not None:
-                #print('Loaded file "{self.data_path}" successfully:\nData: {self.data}\nHDR: {self.hdr}'.format(self=self))
-                print('Loaded file "{self.data_path}" successfully: {self.data}'.format(self=self))
+                # print('Loaded file "{self.data_path}" successfully:\nData: {self.data}\nHDR: {self.hdr}'.format(self=self))
+                logging.getLogger().info('Loaded file "{self.data_path}" successfully: {self.data}'.format(self=self))
             else:
-                print(
+                logging.getLogger().info(
                     'File "{self.data_path}" was not loaded successfully:\nData: {self.data}\n HDR: {self.hdr}'.format(
                         self=self))
 
@@ -289,7 +307,7 @@ class Converter(object):
 
         if self.frames == 1:
             warn('Reshaping {self.data} with {self.frames} is not supported'.format(self=self))
-            pass#self._data = self.data.inav[0]
+            pass  # self._data = self.data.inav[0]
         else:
             if nx < 0 or ny < 0:
                 raise ReshapeError('Scan dimensions {x}x{y} are not valid.'.format(x=nx, y=ny))
@@ -300,8 +318,16 @@ class Converter(object):
                         self=self, nx=nx, ny=ny))
 
             # Reshape the data and convert new signal.
+            # Extract metadata (and remove any hidden fields. These hidden fields will mess up saving a reshaped or a rechunked signal!
+            metadata = self.data.metadata.as_dictionary()
+            original_metadata = self.data.original_metadata.as_dictionary()
+            #remove_dictionary_field(metadata, patterns=['_']) #Remove any fields that starts with "_" - these hidden fields messes up saving.
+
             self._data = pxm.signals.LazyElectronDiffraction2D(
-                self.data.data.reshape((nx, ny, dx, dy)))  # How to retain metadata?
+                self.data.data.reshape((nx, ny, dx, dy)))
+            self.data.metadata.add_dictionary({'General': metadata['General']})
+            self.data.metadata.add_dictionary({'Acquisition_instrument': metadata['Acquisition_instrument']})
+            self.data.original_metadata.add_dictionary(original_metadata)
 
     def rechunk(self, chunks):
         """
@@ -380,9 +406,18 @@ class Converter(object):
         """
         if self.data is None:
             raise FileNotSetError('Cannot apply calibrations. File is not set.')
+
+        if self.calibration_table is not None:
+            self.microscope_parameters.set_values_from_calibrationtable(self.calibration_table)
+
         # Set diffraction calibration
         if self.microscope_parameters.diffraction_scale.is_defined():
             self.data.set_diffraction_calibration(self.microscope_parameters.diffraction_scale.value)
+        else:
+            for ax in [-1, -2]:
+                self.data.axes_manager[ax].scale = 1
+                self.data.axes_manager[ax].offset = 0
+                self.data.axes_manager[ax].units = '<undefined>'
 
         # Set scan calibration
         if self.microscope_parameters.scan_step_x.is_defined() and self.microscope_parameters.scan_step_y.is_defined():
@@ -612,8 +647,9 @@ class Converter(object):
         if isinstance(cy, float) or isinstance(cx, float):
             half_width *= self.data.axes_manager[-2].scale
 
-        #return self.data.get_integrated_intensity(hs.roi.RectangularROI(cx - half_width, cy - half_width, cx + half_width, cy + half_width))
-        return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(axis=np.arange(self.dimension - 2, self.dimension))
+        # return self.data.get_integrated_intensity(hs.roi.RectangularROI(cx - half_width, cy - half_width, cx + half_width, cy + half_width))
+        return self.data.isig[cx - half_width:cx + half_width, cy - half_width:cy + half_width].sum(
+            axis=np.arange(self.dimension - 2, self.dimension))
 
     def get_circular_VBF(self, cx=None, cy=None, r=10, r_inner=0):
         """
@@ -697,7 +733,7 @@ class Converter(object):
         if isinstance(vbf, (pxm.signals.LazyElectronDiffraction2D, pxm.signals.LazyElectronDiffraction1D)):
             vbf.compute(progressbar=False)
 
-        #Check dimensions of VBF image
+        # Check dimensions of VBF image
         if not (1 <= len(np.shape(vbf.data)) <= 2):
             warn('VBF image {vbf} was created with irregular dimensions.'.format(vbf=vbf))
         return vbf
@@ -742,7 +778,9 @@ class Converter(object):
             else:
                 num_frames = 5
         if num_frames > self.frames:
-            warn('The number of requested frames ({num_frames}) exceeds the total number of frames in the stack ({self.frames}). The complete stack will be saved as individual images.'.format(num_frames=num_frames, self=self))
+            warn(
+                'The number of requested frames ({num_frames}) exceeds the total number of frames in the stack ({self.frames}). The complete stack will be saved as individual images.'.format(
+                    num_frames=num_frames, self=self))
             num_frames = self.frames
 
         # Determine wich frames to extract.
@@ -800,3 +838,100 @@ class Converter(object):
             raise ValueError(
                 'Could not determine which frame to plot for {self.data}. Attempted to pixk navigation inidces from {xs!r} and {ys!r}'.format(
                     self=self, xs=xs, ys=ys))
+
+    def calibrate(self, calibrationtable=None, *args, **kwargs):
+        """
+        Calibrates the associate microscope_parameters
+        :param calibrationtable: The calibration table to use. Default is None, in which case the preset calibration table will be used
+        :param args:
+        :param kwargs:
+        :return:
+        """
+
+        if calibrationtable is not None:
+            self.calibration_table = calibrationtable
+
+        if self.calibration_table is not None:
+            for parameter in self.microscope_parameters.get_calibration_parameters():
+                try:
+                    self.microscope_parameters.calibrate_parameter(parameter, self.calibration_table, *args, **kwargs)
+                except CalibrationError as e:
+                    logging.info('Ignoring calibration error when calibration {parameter!r}.'.format(parameter=parameter))
+        else:
+            logging.info('No Calibration table set for converter. Cannot calibrate directly. Please calibrate the microscope parameters object instead.')
+
+
+    def calibrate_cameralength(self):
+        logging.info('Calibrating cameralength...')
+        if self.calibration_table is not None:
+            self.microscope_parameters.calibrate_cameralength(self.calibration_table)
+            logging.info('Success: {self.microscope_parameters.cameralength!r}'.format(self=self))
+        else:
+            logging.info('Cannot calibrate cameralength. No calibration table set for converter.')
+
+    def calibrate_magnification(self):
+        if self.calibration_table is not None:
+            self.microscope_parameters.calibrate_magnification(self.calibration_table)
+        else:
+            logging.info('Cannot calibrate magnification. No calibration table set for converter.')
+
+    def calibrate_rocking_angle(self):
+        if self.calibration_table is not None:
+            self.microscope_parameters.calibrate_rocking_angle(self.calibration_table)
+        else:
+            logging.info('Cannot calibrate rocking angle. No calibration table set for converter.')
+
+    def calibrate_image_scale(self):
+        if self.calibration_table is not None:
+            self.microscope_parameters.calibrate_image_scale(self.calibration_table)
+        else:
+            logging.info('Cannot calibrate image scale. No calibration table set for converter.')
+
+    def calibrate_diffraction_scale(self):
+        if self.calibration_table is not None:
+            self.microscope_parameters.calibrate_diffraction_scale(self.calibration_table)
+        else:
+            logging.info('Cannot calibrate diffraction scale. No calibration table set for converter.')
+
+
+
+def remove_dictionary_field(dictionary, keys=[], patterns=[]):
+    """
+    Removes fields in a dictionary
+
+    :param dictionary: The dictionary to remove fields from
+    :param keys: Keys to remove
+    :param patterns: Key patterns to remove.
+    :type dictionary: dict
+    :type keys: list
+    :type patterns: list
+    :return:
+    """
+
+    if not all([isinstance(pattern, str) for pattern in patterns]):
+        raise TypeError('All patterns in {patterns!r} must be strings.'.format(patterns=patterns))
+    removed_fields = {}
+
+    for key in keys:
+        try:
+            removed_fields.update(dictionary.pop(key))
+        except KeyError as e:
+            logging.getLogger().info('Cannot remove key {key} from dictionary, it does not exist.'.format(key=key))
+        else:
+            logging.getLogger().debug('Removed key {key} from {dictionary}.'.format(key=key, dictionary=dictionary))
+
+    dictionary_keys = list(dictionary.keys()) #Get a static list of dictionary keys. Cannot iterate directly over dictionaries while chaning them!
+    for key in dictionary_keys:
+        if isinstance(key, str):
+            if key.startswith(tuple(patterns)):
+                logging.getLogger().debug(
+                    'Found a pattern in {patterns} that match key {key} in dictionary.'.format(patterns=patterns,
+                                                                                               key=key))
+                try:
+                    removed_fields.update(dictionary.pop(key))
+                except KeyError as e:
+                    logging.getLogger().info(
+                        'Cannot remove key {key} from dictionary, it does not exist.'.format(key=key))
+                else:
+                    logging.getLogger().debug(
+                        'Removed key {key} from {dictionary}.'.format(key=key, dictionary=dictionary))
