@@ -22,7 +22,22 @@ This will make mib2hspy available to your python environment, and make it possib
 To use the GUI parts of mib2hspy, your python environment will need PyQt5, which might or might not be simple to install (it might already be installed). From experience, issues arising from PyQt5 incompatibilities are best solved on a case-to-case basis, and this guide will not cover these issues. 
 
 ## Usage
-mib2hspy centers around the `Converter` and `MicroscopeParameters` objects. `Converter` objects are used to set up the conversion and is connected to a `MicroscopeParameters` object that handles the microscope metadata and calibrations.
+mib2hspy centers around the `Converter` and `MicroscopeParameters` objects. `Converter` objects are used to set up the conversion and is connected to a `MicroscopeParameters` object that handles the microscope metadata and calibrations. For simply reshaping and rechunking data, run the following code:
+```python
+import mib2hspy as m2h
+
+path = "path-to-my-data"
+nx, ny = 128, 128 #Scan dimensions
+
+converter = m2h.Converter()
+converter.data_path = path
+converter.read_mib()
+
+converter.reshape(nx, ny) #Reshape data
+converter.rechunk(32) #Rechunk data
+converter.write('.hspy', overwrite=True)
+
+```
 
 ### Microscope parameters
 The `MicroscopeParameters` object has attributes related to 
