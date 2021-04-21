@@ -5,8 +5,8 @@ from pathlib import Path
 from PyQt5 import uic, QtWidgets
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QObject
 import pandas as pd
-from math import sqrt, isclose
-from mib2hspy.gui.guiTools import QTextEditLogger
+from math import sqrt, isclose, nan, isnan
+from mib2hspy.gui.guiTools import QTextEditLogger, DataFrameModel
 from mib2hspy.Tools import Converter
 
 
