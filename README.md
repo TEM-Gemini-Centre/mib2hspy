@@ -39,18 +39,6 @@ converter.write('.hspy', overwrite=True)
 
 ```
 
-### Microscope parameters
-The `MicroscopeParameters` object has attributes related to 
-```python
-
-```
-
-### Converter
-
-```python
-
-```
-
 ### Typical workflow
 A typical conversion workflow might look like this:
 ```python
