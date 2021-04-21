@@ -35,6 +35,469 @@ class LogStream(object):
             self.logger.log(self.log_level, line.rstrip())
 
 
+class ParameterController(QObject):
+    accelerationVoltageChanged = pyqtSignal([], [int], [float], [str])
+    modeChanged = pyqtSignal([], [int], [float], [str])
+    magModeChanged = pyqtSignal([], [int], [float], [str])
+    magnificationChanged = pyqtSignal([], [int], [float], [str])
+    cameralengthChanged = pyqtSignal([], [int], [float], [str])
+    alphaChanged = pyqtSignal([], [int], [float], [str])
+    stepSizeXChanged = pyqtSignal([], [int], [float], [str])
+    stepSizeYChanged = pyqtSignal([], [int], [float], [str])
+    condenserApertureChanged = pyqtSignal([], [int], [float], [str])
+    convergenceAngleChanged = pyqtSignal([], [int], [float], [str])
+    rockingAngleChanged = pyqtSignal([], [int], [float], [str])
+    rockingFrequencyChanged = pyqtSignal([], [int], [float], [str])
+    spotChanged = pyqtSignal([], [int], [float], [str])
+    spotSizeChanged = pyqtSignal([], [int], [float], [str])
+    cameraChanged = pyqtSignal([], [str])
+    microscopeNameChanged = pyqtSignal([], [str])
+    acquisitionDateChanged = pyqtSignal([])
+
+    tableChanged = pyqtSignal([])
+
+    def __init__(self, view, model, calibrationtable=None):
+        """
+        Create a controller for parameter view and model
+        :param view: The window to control the parameters
+        :param model: The model to store the parameters in
+        :param calibrationtable: Calibration table to look up calibration values in.
+        :type view: ParametersWindow
+        :type model: MicroscopeParameters
+        :type calibrationtable: pandas.DataFrame
+        """
+        super(ParameterController, self).__init__()
+        self._view = view
+        self._model = model
+        self._table = calibrationtable or pd.DataFrame()
+
+        self._table_model = DataFrameModel(parent=self._view)
+        self._view.tableView.setModel(self._table_model)
+
+        # Setup widgets and widget signals
+        self.setupMagnification()
+        self.setupCameralength()
+        self.setupAccelerationVoltage()
+        self.setupMode()
+        self.setupAlpha()
+        self.setupSpot()
+        self.setupSpotSize()
+        self.setupConvergenceAngle()
+        self.setupCondenserAperture()
+        self.setupPrecessionAngle()
+        self.setupPrecessionFrequency()
+        self.setupAcquisitionDate()
+        self.setupScanStep()
+        self.setupCamera()
+        self.setupMicroscopeName()
+        self.update()
+
+        # Interconnections
+        self.accelerationVoltageChanged.connect(self.cameralengthChanged)
+        self.accelerationVoltageChanged.connect(self.magnificationChanged)
+        self.magModeChanged.connect(self.magnificationChanged)
+        self.accelerationVoltageChanged.connect(self.rockingAngleChanged)
+        self.alphaChanged.connect(self.rockingAngleChanged)
+        self.modeChanged.connect(self.rockingAngleChanged)
+        self.cameraChanged.connect(self.cameralengthChanged)
+        self.cameraChanged.connect(self.magnificationChanged)
+        self.microscopeNameChanged.connect(self.cameralengthChanged)
+        self.microscopeNameChanged.connect(self.magnificationChanged)
+
+        # Calibration functionality
+        self.accelerationVoltageChanged.connect(lambda: self._model.calibrate(self._table))
+        self.magnificationChanged.connect(lambda: self._model.calibrate_image_scale(self._table))
+        self.cameralengthChanged.connect(lambda: self._model.calibrate_diffraction_scale(self._table))
+        self.rockingAngleChanged.connect(lambda: self._model.calibrate_rocking_angle(self._table))
+        self.stepSizeXChanged.connect(lambda: self._model.calibrate_stepsize_x(self._table))
+        self.stepSizeYChanged.connect(lambda: self._model.calibrate_stepsize_y(self._table))
+
+    def setupMagnification(self):
+        if self._view.magnificationCheckBox.isChecked():
+            self._model.set_nominal_magnification(self._view.magnificationSpinBox.value())
+            self._model.set_mag_mode(self._view.magnificationSelector.currentText())
+        self._view.magnificationSpinBox.valueChanged.connect(self._model.set_nominal_magnification)
+        self._view.magnificationSelector.currentTextChanged.connect(self._model.set_mag_mode)
+        self._view.magnificationCheckBox.clicked.connect(self.toggle_magnification)
+        self._view.magnificationSpinBox.valueChanged.connect(self.magnificationChanged)
+        self._view.magnificationSelector.currentTextChanged.connect(self.magModeChanged)
+        self._view.magnificationSelector.currentTextChanged.connect(self.update)
+        self._view.magnificationSpinBox.valueChanged.connect(self.update)
+
+    def toggle_magnification(self):
+        if self._view.magnificationCheckBox.isChecked():
+            self._model.set_nominal_magnification(self._view.magnificationSpinBox.value())
+            self._model.set_mag_mode(self._view.magnificationSelector.currentText())
+            self._view.magnificationSpinBox.setEnabled(True)
+            self._view.magnificationSelector.setEnabled(True)
+        else:
+            self._model.set_nominal_magnification(nan)
+            self._model.set_mag_mode('')
+            self._view.magnificationSpinBox.setEnabled(False)
+            self._view.magnificationSelector.setEnabled(False)
+        self.magnificationChanged.emit()
+        self.magModeChanged.emit()
+        self.update()
+
+    def setupCameralength(self):
+        self._view.cameraLengthSpinBox.valueChanged.connect(self._model.set_nominal_cameralength)
+        self._view.cameraLengthCheckBox.clicked.connect(self.toggle_cameralength)
+        self._view.cameraLengthSpinBox.valueChanged.connect(self.cameralengthChanged)
+        self._view.cameraLengthSpinBox.valueChanged.connect(self.update)
+        if self._view.cameraLengthCheckBox.isChecked():
+            self._model.set_nominal_cameralength(self._view.cameraLengthSpinBox.value())
+
+    def toggle_cameralength(self):
+        if self._view.cameraLengthCheckBox.isChecked():
+            self._model.set_nominal_cameralength(self._view.cameraLengthSpinBox.value())
+            self._view.cameraLengthSpinBox.setEnabled(True)
+        else:
+            self._model.set_nominal_cameralength(nan)
+            self._view.cameraLengthSpinBox.setEnabled(False)
+        self.cameralengthChanged.emit()
+        self.update()
+
+    def setupAccelerationVoltage(self):
+        self._view.highTensionSpinBox.valueChanged.connect(
+            lambda x: self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value()))
+        self._view.highTensionCheckBox.clicked.connect(self.toggle_acceleration_voltage)
+        self._view.highTensionSpinBox.valueChanged.connect(self.accelerationVoltageChanged)
+        self._view.highTensionSpinBox.valueChanged.connect(self.update)
+        if self._view.highTensionCheckBox.isChecked():
+            self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value())
+
+    def toggle_acceleration_voltage(self):
+        if self._view.highTensionCheckBox.isChecked():
+            self._model.set_acceleration_voltage(self._view.highTensionSpinBox.value())
+            self._view.highTensionSpinBox.setEnabled(True)
+        else:
+            self._model.set_acceleration_voltage(nan)
+            self._view.highTensionSpinBox.setEnabled(False)
+        self.accelerationVoltageChanged.emit()
+        self.update()
+
+    def setupMode(self):
+        self._view.modeSelector.currentTextChanged.connect(self._model.set_mode)
+        self._view.modeSelector.currentTextChanged.connect(self.update)
+        self._view.modeSelector.currentIndexChanged.connect(self.modeChanged)
+        #        self._view.modeSelector.currentIndexChanged.connect(self.update)
+        self._view.modeCheckBox.clicked.connect(self.toggle_mode)
+        if self._view.modeCheckBox.isChecked():
+            self._model.set_mode(self._view.modeSelector.currentText())
+
+    def toggle_mode(self):
+        if self._view.modeCheckBox.isChecked():
+            self._model.set_mode(self._view.modeSelector.currentText())
+            self._view.modeSelector.setEnabled(True)
+        else:
+            self._model.set_mode('None')
+            self._view.modeSelector.setEnabled(False)
+        self.modeChanged.emit()
+        self.update()
+
+    def setupAlpha(self):
+        self._view.alphaSpinBox.valueChanged.connect(self._model.set_alpha)
+        self._view.alphaCheckBox.clicked.connect(self.toggle_alpha)
+        self._view.alphaSpinBox.valueChanged.connect(self.alphaChanged)
+        self._view.alphaSpinBox.valueChanged.connect(self.update)
+        if self._view.alphaCheckBox.isChecked():
+            self._model.set_alpha(self._view.alphaSpinBox.value())
+
+    def toggle_alpha(self):
+        if self._view.alphaCheckBox.isChecked():
+            self._model.set_alpha(self._view.alphaSpinBox.value())
+            self._view.alphaSpinBox.setEnabled(True)
+        else:
+            self._model.set_alpha(nan)
+            self._view.alphaSpinBox.setEnabled(False)
+        self.alphaChanged.emit()
+        self.update()
+
+    def setupSpot(self):
+        self._view.spotSpinBox.valueChanged.connect(self._model.set_spot)
+        self._view.spotSpinBox.valueChanged.connect(self.update)
+        self._view.spotCheckBox.clicked.connect(self.toggle_spot)
+        self._view.spotSpinBox.valueChanged.connect(self.spotChanged)
+        if self._view.spotCheckBox.isChecked():
+            self._model.set_spot(self._view.spotSpinBox.value())
+
+    def toggle_spot(self):
+        if self._view.spotCheckBox.isChecked():
+            self._model.set_spot(self._view.spotSpinBox.value())
+            self._view.spotSpinBox.setEnabled(True)
+        else:
+            self._model.set_spot(nan)
+            self._view.spotSpinBox.setEnabled(False)
+        self.spotChanged.emit()
+        self.update()
+
+    def setupSpotSize(self):
+        self._view.spotSizeSpinBox.valueChanged.connect(self._model.set_nominal_spotsize)
+        self._view.spotSizeSpinBox.valueChanged.connect(self.update)
+        self._view.spotSizeCheckBox.clicked.connect(self.toggle_spot_size)
+        self._view.spotSizeSpinBox.valueChanged.connect(self.spotSizeChanged)
+        if self._view.spotSizeCheckBox.isChecked():
+            self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
+
+    def toggle_spot_size(self):
+        if self._view.spotSizeCheckBox.isChecked():
+            self._model.set_nominal_spotsize(self._view.spotSizeSpinBox.value())
+            self._view.spotSizeSpinBox.setEnabled(True)
+        else:
+            self._model.set_nominal_spotsize(nan)
+            self._view.spotSizeSpinBox.setEnabled(False)
+        self.spotSizeChanged.emit()
+        self.update()
+
+    def setupCondenserAperture(self):
+        self._view.condenserApertureSpinBox.valueChanged.connect(self._model.set_nominal_condenser_aperture)
+        self._view.condenserApertureCheckBox.clicked.connect(self.toggle_condenser_aperture)
+        self._view.condenserApertureSpinBox.valueChanged.connect(self.condenserApertureChanged)
+        self._view.condenserApertureSpinBox.valueChanged.connect(self.update)
+        if self._view.condenserApertureCheckBox.isChecked():
+            self._model.set_nominal_condenser_aperture(self._view.condenserApertureSpinBox.value())
+
+    def toggle_condenser_aperture(self):
+        if self._view.condenserApertureCheckBox.isChecked():
+            self._model.set_nominal_condenser_aperture(self._view.condenserApertureSpinBox.value())
+            self._view.condenserApertureSpinBox.setEnabled(True)
+        else:
+            self._model.set_nominal_condenser_aperture(nan)
+            self._view.condenserApertureSpinBox.setEnabled(False)
+        self.condenserApertureChanged.emit()
+        self.update()
+
+    def setupConvergenceAngle(self):
+        self._view.convergenceAngleSpinBox.valueChanged.connect(self._model.set_nominal_convergence_angle)
+        self._view.convergenceAngleCheckBox.clicked.connect(self.toggle_convergence_angle)
+        self._view.convergenceAngleSpinBox.valueChanged.connect(self.convergenceAngleChanged)
+        self._view.convergenceAngleSpinBox.valueChanged.connect(self.update)
+        if self._view.convergenceAngleCheckBox.isChecked():
+            self._model.set_nominal_convergence_angle(self._view.convergenceAngleSpinBox.value())
+
+    def toggle_convergence_angle(self):
+        if self._view.convergenceAngleCheckBox.isChecked():
+            self._model.set_nominal_convergence_angle(self._view.convergenceAngleSpinBox.value())
+            self._view.convergenceAngleSpinBox.setEnabled(True)
+        else:
+            self._model.set_nominal_convergence_angle(nan)
+            self._view.convergenceAngleSpinBox.setEnabled(False)
+        self.convergenceAngleChanged.emit()
+        self.update()
+
+    def setupPrecessionAngle(self):
+        self._view.precessionAngleSpinBox.valueChanged.connect(self._model.set_nominal_rocking_angle)
+        self._view.precessionAngleCheckBox.clicked.connect(self.toggle_precession_angle)
+        self._view.precessionAngleSpinBox.valueChanged.connect(self.rockingAngleChanged)
+        self._view.precessionAngleSpinBox.valueChanged.connect(self.update)
+        if self._view.precessionAngleCheckBox.isChecked():
+            self._model.set_nominal_rocking_angle(self._view.precessionAngleSpinBox.value())
+
+    def toggle_precession_angle(self):
+        if self._view.precessionAngleCheckBox.isChecked():
+            self._model.set_nominal_rocking_angle(self._view.precessionAngleSpinBox.value())
+            self._view.precessionAngleSpinBox.setEnabled(True)
+        else:
+            self._model.set_nominal_rocking_angle(nan)
+            self._view.precessionAngleSpinBox.setEnabled(False)
+        self.rockingAngleChanged.emit()
+        self.update()
+
+    def setupPrecessionFrequency(self):
+        self._view.precessionFrequencySpinBox.valueChanged.connect(self._model.set_rocking_frequency)
+        self._view.precessionFrequencyCheckBox.clicked.connect(self.toggle_precession_frequency)
+        self._view.precessionFrequencySpinBox.valueChanged.connect(self.rockingFrequencyChanged)
+        self._view.precessionFrequencySpinBox.valueChanged.connect(self.update)
+        if self._view.precessionFrequencyCheckBox.isChecked():
+            self._model.set_rocking_frequency(self._view.precessionFrequencySpinBox.value())
+
+    def toggle_precession_frequency(self):
+        if self._view.precessionFrequencyCheckBox.isChecked():
+            self._model.set_rocking_frequency(self._view.precessionFrequencySpinBox.value())
+            self._view.precessionFrequencySpinBox.setEnabled(True)
+        else:
+            self._model.set_rocking_frequency(nan)
+            self._view.precessionFrequencySpinBox.setEnabled(False)
+        self.rockingFrequencyChanged.emit()
+        self.update()
+
+    def setupAcquisitionDate(self):
+        self._view.acquisitionDate.dateChanged.connect(lambda date: self._model.set_acquisition_date(date.toPyDate()))
+        self._view.acquisitionDate.dateChanged.connect(self.acquisitionDateChanged)
+        self._view.acquisitionDate.dateChanged.connect(self.update)
+        self._view.acquisitionDateCheckBox.clicked.connect(self.toggle_acquisition_date)
+        if self._view.acquisitionDateCheckBox.isChecked():
+            self._model.set_acquisition_date(self._view.acquisitionDate.date().toPyDate())
+
+    def toggle_acquisition_date(self):
+        if self._view.acquisitionDateCheckBox.isChecked():
+            self._model.set_acquisition_date(self._view.acquisitionDate.date().toPyDate())
+            self._view.acquisitionDate.setEnabled(True)
+        else:
+            self._model.set_acquisition_date('')
+            self._view.acquisitionDate.setEnabled(False)
+        self._view.acquisitionDate.dateChanged.connect(self.acquisitionDateChanged)
+        self.update()
+
+    def setupScanStep(self):
+        self._view.stepXSpinBox.valueChanged.connect(self._model.set_nominal_scan_step_x)
+        self._view.stepXSpinBox.valueChanged.connect(self._model.set_scan_step_x)
+        self._view.stepYSpinBox.valueChanged.connect(self._model.set_nominal_scan_step_y)
+        self._view.stepYSpinBox.valueChanged.connect(self._model.set_scan_step_y)
+        self._view.stepGroupBox.clicked.connect(self.toggle_step_size)
+        self._view.stepXSpinBox.valueChanged.connect(self.stepSizeXChanged)
+        self._view.stepYSpinBox.valueChanged.connect(self.stepSizeYChanged)
+        self._view.stepXSpinBox.valueChanged.connect(self.update)
+        self._view.stepYSpinBox.valueChanged.connect(self.update)
+        if self._view.stepGroupBox.isChecked():
+            self._model.set_nominal_scan_step_x(self._view.stepXSpinBox.value())
+            self._model.set_nominal_scan_step_y(self._view.stepYSpinBox.value())
+            self._model.set_scan_step_x(self._view.stepXSpinBox.value())
+            self._model.set_scan_step_y(self._view.stepYSpinBox.value())
+
+    def toggle_step_size(self):
+        if self._view.stepGroupBox.isChecked():
+            self._model.set_nominal_scan_step_x(self._view.stepXSpinBox.value())
+            self._model.set_nominal_scan_step_y(self._view.stepYSpinBox.value())
+            self._model.set_scan_step_x(self._view.stepXSpinBox.value())
+            self._model.set_scan_step_y(self._view.stepYSpinBox.value())
+        else:
+            self._model.set_nominal_scan_step_x(nan)
+            self._model.set_nominal_scan_step_y(nan)
+            self._model.set_scan_step_x(nan)
+            self._model.set_scan_step_y(nan)
+        self.stepSizeXChanged.emit()
+        self.stepSizeYChanged.emit()
+        self.update()
+
+    def setupCamera(self):
+        self._view.cameraComboBox.currentTextChanged.connect(lambda text: self._model.set_camera(str(text)))
+        self._view.cameraComboBox.currentTextChanged.connect(self.cameraChanged)
+        self._view.cameraComboBox.currentTextChanged.connect(self.update)
+        self._view.cameraCheckBox.clicked.connect(self.toggle_camera)
+        if self._view.cameraCheckBox.isChecked():
+            self._model.set_camera(str(self._view.cameraComboBox.currentText()))
+
+    def toggle_camera(self):
+        if self._view.cameraCheckBox.isChecked():
+            self._model.set_camera(str(self._view.cameraComboBox.currentText()))
+            self._view.cameraComboBox.setEnabled(True)
+        else:
+            self._model.set_camera('')
+            self._view.cameraComboBox.setEnabled(False)
+        self.cameraChanged.emit()
+        self.update()
+
+    def setupMicroscopeName(self):
+        self._view.microscopeComboBox.currentTextChanged.connect(
+            lambda text: self._model.set_microscope(str(text)))
+        self._view.microscopeComboBox.currentTextChanged.connect(self.microscopeNameChanged)
+        self._view.microscopeComboBox.currentTextChanged.connect(self.update)
+        self._view.microscopeCheckBox.clicked.connect(self.toggle_microscope)
+        if self._view.microscopeCheckBox.isChecked():
+            self._model.set_microscope(str(self._view.microscopeComboBox.currentText()))
+
+    def toggle_microscope(self):
+        if self._view.microscopeCheckBox.isChecked():
+            self._model.set_microscope(str(self._view.microscopeComboBox.currentText()))
+            self._view.microscopeComboBox.setEnabled(True)
+        else:
+            self._model.set_microscope('')
+            self._view.microscopeComboBox.setEnabled(False)
+        self.microscopeNameChanged.emit()
+        self.update()
+
+    def update(self, *args, **kwargs):
+        self._table_model.setDataFrame(self._model.as_dataframe2D())
+
+    def show(self):
+        self._view.show()
+
+    def get_view(self):
+        return self._view
+
+    def get_model(self):
+        return self._model
+
+    def get_table(self):
+        return self._table
+
+    def set_table(self, calibrationtable):
+        """
+        Sets the calibration table of the parameters
+
+        :param calibrationtable: The calibration table
+        :type calibrationtable: pd.DataFrame
+        :return:
+        """
+        if not isinstance(calibrationtable, pd.DataFrame):
+            raise TypeError(
+                'Calibration table must be a pandas.DataFrame object, not {t}'.format(t=type(calibrationtable)))
+        self._table = calibrationtable
+        self.tableChanged.emit()
+
+
+class ParametersWindow(QtWidgets.QMainWindow):
+    parametersChanged = pyqtSignal()
+
+    def __init__(self, *args, **kwargs):
+        super(ParametersWindow, self).__init__(*args, **kwargs)
+
+        uic.loadUi(str(Path(__file__).parent / 'source/QTCmib2hspy/parameterswindow.ui'), self)
+
+    #     self.model = Microscope()
+    #
+    #     self.magnificationSpinBox.valueChanged.connect(self.set_magnification)
+    #     self.magnificationSelector.currentTextChanged.connect(self.set_mag_mode)
+    #     self.magnificationGroupBox.clicked.connect(self.set_magnification_active)
+    #
+    #     self.cameraLengthSpinBox.valueChanged.connect(self.set_cameralength)
+    #     self.cameraLengthGroupBox.clicked.connect(self.set_cameralength_active)
+    #
+    #     self.highTensionSpinBox.valueChanged.connect(self.set_acceleration_voltage)
+    #     self.highTensionGroupBox.clicked.connect(self.set_acceleration_voltage_active)
+    #
+    #     self.modeSelector.currentTextChanged.connect(self.set_mode)
+    #
+    #     self.alphaSpinBox.valueChanged.connect(self.set_alpha)
+    #     self.alphaGroupBox.clicked.connect(self.set_alpha_active)
+    #
+    #     self.spotSpinBox.valueChanged.connect(self.set_spot)
+    #     self.spotGroupBox.clicked.connect(self.set_spot_active)
+    #
+    #     self.condenserApertureSpinBox.valueChanged.connect(self.set_condenser_aperture)
+    #     self.condenserApertureGroupBox.clicked.connect(self.set_condenser_aperture_active)
+    #
+    #     self.convergenceAngleSpinBox.valueChanged.connect(self.set_convergence_angle)
+    #     self.convergenceAngleGroupBox.clicked.connect(self.set_convergence_angle_active)
+    #
+    #     self.spotSizeSpinBox.valueChanged.connect(self.set_spotsize)
+    #     self.spotSizeGroupBox.clicked.connect(self.set_spotsize_active)
+    #
+    #     self.precessionAngleSpinBox.valueChanged.connect(self.set_rocking_angle)
+    #     self.precessionAngleGroupBox.clicked.connect(self.set_rocking_angle_active)
+    #
+    #     self.precessionFrequencySpinBox.valueChanged.connect(self.set_rocking_frequency)
+    #     self.precessionFrequencyGroupBox.clicked.connect(self.set_rocking_frequency_active)
+    #
+    #     self.acquisitionDate.dateChanged.connect(self.set_acquisition_date)
+    #     self.acquisitionDateGroupBox.clicked.connect(self.set_acquisition_date_active)
+    #
+    #     self.stepXSpinBox.valueChanged.connect(self.set_step_x)
+    #     self.stepYSpinBox.valueChanged.connect(self.set_step_y)
+    #     self.stepGroupBox.clicked.connect(self.set_step_active)
+    #
+    #     self.table_model = DataFrameModel(parent=self)
+    #     self.tableView.setModel(self.table_model)
+    #     self.model.updated.connect(self.refresh)
+    #
+    #     self.refresh()
+    #
+    # @pyqtSlot()
+    # def refresh(self):
+    #     self.table_model.setDataFrame(self.model.dataframe2D)
+
+
 class ConverterModel(QObject):
     dataChanged = pyqtSignal([], [str], [Converter], name="dataChanged")
 
@@ -509,9 +972,6 @@ def main(logfile=None, log_level=logging.INFO):
     logging.getLogger().addHandler(fileHandler)
     logging.getLogger().setLevel(log_level)
     logging.getLogger().addHandler((logging.StreamHandler(sys.stdout)))
-    # logging.getLogger().addHandler((logging.StreamHandler(sys.stderr)))
-    # sys.stdout = LogStream(logging.getLogger(), logging.INFO)
-    # sys.stderr = LogStream(logging.getLogger(), logging.ERROR)
 
     myqui = QtWidgets.QApplication(sys.argv)
     window = ConverterView()
@@ -521,13 +981,6 @@ def main(logfile=None, log_level=logging.INFO):
     controller = ConverterController(window, model)
 
     sys.exit(myqui.exec_())
-
-    # app = QtWidgets.QApplication(sys.argv)
-    # window = MainWindow()
-    # window.show()
-    # window.activateWindow()
-    # window.raise_()
-    # sys.exit(app.exec())
 
 
 if __name__ == '__main__':
