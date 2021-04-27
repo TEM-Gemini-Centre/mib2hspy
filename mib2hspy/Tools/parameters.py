@@ -327,11 +327,9 @@ class CalibrationQueryFormatter(QueryFormatter):
                 raise ValueError(
                     'Value {value!r} is not in {self.microscope_parameters!r}'.format(value=value, self=self))
             if isinstance(value, Magnification):
-                return self.create_query(value, self.microscope_parameters.mode, self.microscope_parameters.mag_mode,
-                                         self.microscope_parameters.camera)
+                return self.create_query(value, self.microscope_parameters.mag_mode, self.microscope_parameters.camera)
             elif isinstance(value, ImageScale):
-                return self.create_query(self.microscope_parameters.mode, self.microscope_parameters.mag_mode,
-                                         self.microscope_parameters.camera, self.microscope_parameters.magnification)
+                return self.create_query(self.microscope_parameters.mag_mode, self.microscope_parameters.camera, self.microscope_parameters.magnification)
             elif isinstance(value, Cameralength):
                 return self.create_query(value, self.microscope_parameters.camera)
             elif isinstance(value, DiffractionScale):
@@ -1362,6 +1360,7 @@ class MicroscopeParameters(object):
                         else:
                             #logging.info('{parameter!r} is not calibrated. Its nominal value is not properly defined.'.format(parameter=parameter))
                             logging.debug('Nominal value of {parameter!r} cannot be calibrated.'.format(parameter=parameter))
+                            parameter.set_value(nan)
                     else:
                         parameter.set_value_from_calibrationtable(calibrationtable, query, print_results)
                 except UndefinedVariableError as e:
