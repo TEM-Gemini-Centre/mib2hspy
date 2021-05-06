@@ -11,7 +11,7 @@ setup(
     classifiers=[
         "Programming Language :: Python :: 3.8",
         "Intended Audience :: Science/Research",
-        "License :: GNU General Public License v3 (GPLv3)",
+        "License :: MIT",
         "Natural Language :: English",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering",
