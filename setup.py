@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name='mib2hspy',
     version='0.1.1',
-    license='GPLv3',
+    license='mit',
     author='Emil Christiansen',
     author_email='emil.christiansen@ntnu.no',
     description="Converting .mib data to hspy supported formats",
