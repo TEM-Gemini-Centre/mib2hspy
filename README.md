@@ -36,7 +36,6 @@ converter.read_mib()
 converter.reshape(nx, ny) #Reshape data
 converter.rechunk(32) #Rechunk data
 converter.write('.hspy', overwrite=True)
-
 ```
 
 ### Typical workflow

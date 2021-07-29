@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1385</width>
-    <height>812</height>
+    <width>1406</width>
+    <height>946</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -278,10 +278,30 @@
                <string>Datatype</string>
               </property>
               <layout class="QGridLayout" name="gridLayout_9">
+               <item row="3" column="0" colspan="2">
+                <widget class="QLabel" name="label_15">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="text">
+                  <string>New dtype:</string>
+                 </property>
+                </widget>
+               </item>
                <item row="0" column="0" colspan="3">
                 <widget class="QPushButton" name="readDataInfoButton">
                  <property name="text">
                   <string>Read</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1" colspan="2">
+                <widget class="QLabel" name="maxValueLabel">
+                 <property name="text">
+                  <string>None</string>
                  </property>
                 </widget>
                </item>
@@ -298,13 +318,6 @@
                  </property>
                 </widget>
                </item>
-               <item row="1" column="1" colspan="2">
-                <widget class="QLabel" name="dtypeLabel">
-                 <property name="text">
-                  <string>None</string>
-                 </property>
-                </widget>
-               </item>
                <item row="2" column="0">
                 <widget class="QLabel" name="label_13">
                  <property name="sizePolicy">
@@ -318,23 +331,10 @@
                  </property>
                 </widget>
                </item>
-               <item row="2" column="1" colspan="2">
-                <widget class="QLabel" name="maxValueLabel">
+               <item row="1" column="1" colspan="2">
+                <widget class="QLabel" name="dtypeLabel">
                  <property name="text">
                   <string>None</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="0" colspan="2">
-                <widget class="QLabel" name="label_15">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="text">
-                  <string>New dtype:</string>
                  </property>
                 </widget>
                </item>
@@ -399,18 +399,18 @@
                   </property>
                  </widget>
                 </item>
-                <item row="1" column="1">
-                 <widget class="QLineEdit" name="specimenLineEdit"/>
-                </item>
-                <item row="0" column="1">
-                 <widget class="QLineEdit" name="operatorLineEdit"/>
-                </item>
                 <item row="0" column="0">
                  <widget class="QLabel" name="label_33">
                   <property name="text">
                    <string>Operator</string>
                   </property>
                  </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QLineEdit" name="specimenLineEdit"/>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QLineEdit" name="operatorLineEdit"/>
                 </item>
                </layout>
               </widget>
@@ -632,6 +632,69 @@
               </widget>
              </item>
              <item>
+              <widget class="QGroupBox" name="VBFGroupBox">
+               <property name="title">
+                <string>VBF</string>
+               </property>
+               <property name="checkable">
+                <bool>true</bool>
+               </property>
+               <layout class="QGridLayout" name="gridLayout_2">
+                <item row="1" column="3">
+                 <widget class="QSpinBox" name="cYSpinBox">
+                  <property name="maximum">
+                   <number>255</number>
+                  </property>
+                  <property name="value">
+                   <number>128</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="label_3">
+                  <property name="text">
+                   <string>X</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="4">
+                 <widget class="QLabel" name="label_9">
+                  <property name="text">
+                   <string>Width</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QSpinBox" name="cXSpinBox">
+                  <property name="maximum">
+                   <number>255</number>
+                  </property>
+                  <property name="value">
+                   <number>128</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="2">
+                 <widget class="QLabel" name="label_5">
+                  <property name="text">
+                   <string>Y</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="5">
+                 <widget class="QSpinBox" name="widthSpinBox">
+                  <property name="maximum">
+                   <number>255</number>
+                  </property>
+                  <property name="value">
+                   <number>10</number>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
               <widget class="QGroupBox" name="fileFormatGroupBox">
                <property name="title">
                 <string>File formats</string>
@@ -738,8 +801,8 @@
                    <rect>
                     <x>0</x>
                     <y>0</y>
-                    <width>328</width>
-                    <height>517</height>
+                    <width>278</width>
+                    <height>628</height>
                    </rect>
                   </property>
                   <layout class="QGridLayout" name="gridLayout_4">
@@ -1515,12 +1578,54 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1385</width>
-     <height>26</height>
+     <width>1406</width>
+     <height>21</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionExit"/>
+    <addaction name="actionOpen"/>
+    <addaction name="actionClose"/>
+   </widget>
+   <widget class="QMenu" name="menuPlot">
+    <property name="title">
+     <string>Plot</string>
+    </property>
+    <addaction name="actionVBF"/>
+    <addaction name="actionFrames"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuPlot"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionVBF">
+   <property name="text">
+    <string>VBF</string>
+   </property>
+  </action>
+  <action name="actionFrames">
+   <property name="text">
+    <string>Frames</string>
+   </property>
+  </action>
+  <action name="actionExit">
+   <property name="text">
+    <string>Exit</string>
+   </property>
+  </action>
+  <action name="actionOpen">
+   <property name="text">
+    <string>Open</string>
+   </property>
+  </action>
+  <action name="actionClose">
+   <property name="text">
+    <string>Close</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>

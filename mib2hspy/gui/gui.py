@@ -873,6 +873,10 @@ class ConverterController(object):
             else:
                 logging.getLogger().info('Data written successfully!')
 
+        if self._view.VBFGroupBox.isChecked():
+            fig = self._model.converter.plot_vbf(vbf_kwargs={'cx': self._view.cXSpinBox.value(), 'cy':self._view.cYSpinBox.value(), 'width': self._view.widthSpinBox.value()})
+            fig.savefig(self._model.converter.data_path.parent / '{p.stem}_VBF.png'.format(p=self._model.converter.data_path))
+
     def set_calibration_table(self, path=None):
         try:
             if path is None:

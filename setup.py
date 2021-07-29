@@ -20,10 +20,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         "PyQt5",
-        "hyperspy",
-        "pyxem",
         "numpy",
-        "matplotlib",
+        "pyxem==0.13.3",
         "pathlib",
         "tabulate",
         "datetime",
