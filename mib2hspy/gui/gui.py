@@ -556,6 +556,14 @@ class ConverterModel(QObject):
             logging.getLogger().error(e)
         self.dataChanged.emit()
 
+    @pyqtSlot(tuple, name='rechunkData')
+    def rechunkData(self, chunks):
+        try:
+            self.converter.rechunk(chunks)
+        except Exception as e:
+            logging.getLogger().error(e)
+        self.dataChanged.emit()
+
     @pyqtSlot(int, int, name='reshapeStack')
     def reshapeStack(self, nx, ny):
         try:
@@ -753,7 +761,10 @@ class ConverterController(object):
 
     def update_view(self):
         self._view.dataPathLineEdit.setText(str(self._model.converter.data_path))
-        self._view.signalLabel.setText(str(self._model.converter.data))
+        if self._model.converter.data is not None:
+            self._view.signalLabel.setText(str(self._model.converter.data).replace(', title: {title}'.format(title=self._model.converter.data.metadata.General.title), ', title: {short_title}...'.format(short_title=self._model.converter.data.metadata.General.title[:6])))
+        else:
+            self._view.signalLabel.setText(self._model.converter.data)
         self.update_write_button()
 
         self._parameter_controller.update()
@@ -777,6 +788,44 @@ class ConverterController(object):
         if self._model.converter.data is not None:
             self._view.chunksLabel.setText(str(self._model.converter.data.data.chunksize))
 
+        # Update chunk spinboxes
+        if self._model.converter.nx > 0:
+            self._view.chunkXSpinBox.setEnabled(True)
+            reset_value = self._view.chunkXSpinBox.maximum() < self._model.converter.nx
+            self._view.chunkXSpinBox.setMaximum(self._model.converter.nx)
+            if reset_value:
+                self._view.chunkXSpinBox.setValue(32)
+        else:
+            self._view.chunkXSpinBox.setEnabled(False)
+
+        if self._model.converter.ny > 0:
+            self._view.chunkYSpinBox.setEnabled(True)
+            reset_value = self._view.chunkYSpinBox.maximum() < self._model.converter.ny
+            self._view.chunkYSpinBox.setMaximum(self._model.converter.ny)
+            if reset_value:
+                self._view.chunkYSpinBox.setValue(32)
+        else:
+            self._view.chunkYSpinBox.setEnabled(False)
+
+        if self._model.converter.ndx > 0:
+            self._view.chunkKxSpinBox.setEnabled(True)
+            reset_value = self._view.chunkKxSpinBox.maximum() < self._model.converter.ndx
+            self._view.chunkKxSpinBox.setMaximum(self._model.converter.ndx)
+            if reset_value:
+                self._view.chunkKxSpinBox.setValue(32)
+        else:
+            self._view.chunkKxSpinBox.setEnabled(False)
+
+        if self._model.converter.ndy > 0:
+            self._view.chunkKySpinBox.setEnabled(True)
+            reset_value = self._view.chunkKySpinBox.maximum() < self._model.converter.ndy
+            self._view.chunkKySpinBox.setMaximum(self._model.converter.ndy)
+            if reset_value:
+                self._view.chunkKySpinBox.setValue(32)
+        else:
+            self._view.chunkKySpinBox.setEnabled(False)
+
+
     def reshape_stack(self):
         try:
             self._model.converter.reshape(self._view.nXSpinBox.value(), self._view.nYSpinBox.value())
@@ -798,7 +847,8 @@ class ConverterController(object):
 
     def rechunk_data(self):
         try:
-            self._model.converter.rechunk(self._view.chunkSpinBox.value())
+            chunks = tuple([spinbox.value() for spinbox in [self._view.chunkXSpinBox, self._view.chunkYSpinBox, self._view.chunkKxSpinBox, self._view.chunkKySpinBox] if spinbox.isEnabled()])
+            self._model.converter.rechunk(chunks)
         except Exception as e:
             logging.getLogger().error(e)
         else:
