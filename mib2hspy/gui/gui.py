@@ -44,7 +44,7 @@ class ConverterMainWindow(QtWidgets.QMainWindow):
 
         self.frameConverterButton.clicked.connect(self.frame_converter_window.show)
         self.stackConverterButton.clicked.connect(self.stack_converter_window.show)
-        self.quitButton.clicked.connect(self.close())
+        self.quitButton.clicked.connect(self.close)
 
 def gui():
     main()

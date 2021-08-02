@@ -10,31 +10,6 @@ from mib2hspy.gui.guiTools import DataFrameModel
 from mib2hspy.Tools import Converter
 
 
-class LogStream(object):
-    """
-    Class for handling logging to stream objects.
-    """
-
-    def __init__(self, logger, log_level=logging.DEBUG):
-        """
-        Create a log stream
-        :param logger: logging.Logger object
-        :param log_level: logging level
-        """
-        self.logger = logger
-        self.log_level = log_level
-        self.linebuf = ''
-
-    def write(self, buf):
-        """
-        Log a message and write it to the stream
-        :param buf:
-        :return:
-        """
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
-
-
 class ParameterController(QObject):
     accelerationVoltageChanged = pyqtSignal([], [int], [float], [str])
     modeChanged = pyqtSignal([], [int], [float], [str])
@@ -437,67 +412,6 @@ class ParameterController(QObject):
         self.tableChanged.emit()
 
 
-class ParametersWindow(QtWidgets.QMainWindow):
-    parametersChanged = pyqtSignal()
-
-    def __init__(self, *args, **kwargs):
-        super(ParametersWindow, self).__init__(*args, **kwargs)
-
-        uic.loadUi(str(Path(__file__).parent / 'source/QTCmib2hspy/parameterswindow.ui'), self)
-
-    #     self.model = Microscope()
-    #
-    #     self.magnificationSpinBox.valueChanged.connect(self.set_magnification)
-    #     self.magnificationSelector.currentTextChanged.connect(self.set_mag_mode)
-    #     self.magnificationGroupBox.clicked.connect(self.set_magnification_active)
-    #
-    #     self.cameraLengthSpinBox.valueChanged.connect(self.set_cameralength)
-    #     self.cameraLengthGroupBox.clicked.connect(self.set_cameralength_active)
-    #
-    #     self.highTensionSpinBox.valueChanged.connect(self.set_acceleration_voltage)
-    #     self.highTensionGroupBox.clicked.connect(self.set_acceleration_voltage_active)
-    #
-    #     self.modeSelector.currentTextChanged.connect(self.set_mode)
-    #
-    #     self.alphaSpinBox.valueChanged.connect(self.set_alpha)
-    #     self.alphaGroupBox.clicked.connect(self.set_alpha_active)
-    #
-    #     self.spotSpinBox.valueChanged.connect(self.set_spot)
-    #     self.spotGroupBox.clicked.connect(self.set_spot_active)
-    #
-    #     self.condenserApertureSpinBox.valueChanged.connect(self.set_condenser_aperture)
-    #     self.condenserApertureGroupBox.clicked.connect(self.set_condenser_aperture_active)
-    #
-    #     self.convergenceAngleSpinBox.valueChanged.connect(self.set_convergence_angle)
-    #     self.convergenceAngleGroupBox.clicked.connect(self.set_convergence_angle_active)
-    #
-    #     self.spotSizeSpinBox.valueChanged.connect(self.set_spotsize)
-    #     self.spotSizeGroupBox.clicked.connect(self.set_spotsize_active)
-    #
-    #     self.precessionAngleSpinBox.valueChanged.connect(self.set_rocking_angle)
-    #     self.precessionAngleGroupBox.clicked.connect(self.set_rocking_angle_active)
-    #
-    #     self.precessionFrequencySpinBox.valueChanged.connect(self.set_rocking_frequency)
-    #     self.precessionFrequencyGroupBox.clicked.connect(self.set_rocking_frequency_active)
-    #
-    #     self.acquisitionDate.dateChanged.connect(self.set_acquisition_date)
-    #     self.acquisitionDateGroupBox.clicked.connect(self.set_acquisition_date_active)
-    #
-    #     self.stepXSpinBox.valueChanged.connect(self.set_step_x)
-    #     self.stepYSpinBox.valueChanged.connect(self.set_step_y)
-    #     self.stepGroupBox.clicked.connect(self.set_step_active)
-    #
-    #     self.table_model = DataFrameModel(parent=self)
-    #     self.tableView.setModel(self.table_model)
-    #     self.model.updated.connect(self.refresh)
-    #
-    #     self.refresh()
-    #
-    # @pyqtSlot()
-    # def refresh(self):
-    #     self.table_model.setDataFrame(self.model.dataframe2D)
-
-
 class ConverterModel(QObject):
     dataChanged = pyqtSignal([], [str], [Converter], name="dataChanged")
 
@@ -686,7 +600,7 @@ class ConverterController(object):
         self._view.calibrationPathLineEdit.setText(self.default_calibration_file)
         self.set_calibration_table()
         self._view.calibrationPathLineEdit.returnPressed.connect(self.set_calibration_table)
-        self._view.showCalibrationsButton.clicked.connect(lambda: print(self._parameter_controller.get_table()))
+        self._view.showCalibrationsButton.clicked.connect(self.show_calibration_table)
         self._view.browseCalibrationFileButton.clicked.connect(
             lambda: self.set_calibration_table(self._view.browseCalibrationFile()))
 
@@ -840,6 +754,10 @@ class ConverterController(object):
         else:
             logging.info('Applied calibrations successfully')
             self._model.dataChanged.emit()
+
+    def show_calibration_table(self):
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 1000):
+            print(self._parameter_controller.get_table())
 
     def rechunk_data(self):
         try:
