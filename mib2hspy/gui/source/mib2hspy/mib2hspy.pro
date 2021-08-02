@@ -10,13 +10,15 @@ CONFIG += c++11
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    stack_converter.cpp
 
 HEADERS += \
-    mainwindow.h
+    stack_converter.h
 
 FORMS += \
+    frame_converter.ui \
     mainwindow.ui \
+    stack_converter.ui \
     vbf.ui
 
 # Default rules for deployment.

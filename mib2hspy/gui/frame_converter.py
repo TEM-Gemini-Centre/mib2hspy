@@ -29,7 +29,7 @@ class FileError(Error):
 
 
 class MIBDataFile(QObject):
-    plot_extensions = ['.jpg', '.png']
+    plot_extensions = ['.jpg']
 
     def __init__(self, path='', parent=None):
         super(MIBDataFile, self).__init__(parent=parent)
@@ -128,11 +128,11 @@ class MIBDataFile(QObject):
         return hash(self.path)
 
     def load(self):
-        data = pxm.load_mib(str(self.path), lazy = True)
-        #If the data is a stack, keep it as lazy. If it is a single image, extract the image and load it into memory
+        data = pxm.load_mib(str(self.path))
+        # If the data is a stack, keep it as lazy. If it is a single image, extract the image and load it into memory
         if len(data) == 1:
-            data.compute() #Load data into memory
-            self.data = pxm.ElectronDiffraction2D(data.inav[0])  # extract single frame if only one dimension!
+            data.compute()  # Load data into memory
+            self.data = pxm.signals.ElectronDiffraction2D(data.inav[0])  # extract single frame if only one dimension!
         else:
             self.data = data
         if self.path.with_suffix('.hdr').exists():
@@ -185,10 +185,13 @@ class MIBDataFile(QObject):
         :return:
         """
         if not isinstance(calibration_table, pd.DataFrame):
-            raise TypeError('{calibration_table!r} is an invalid calibration table. Only pandas.DataFrame objects are accepted.')
+            raise TypeError(
+                '{calibration_table!r} is an invalid calibration table. Only pandas.DataFrame objects are accepted.')
 
         if signal_type not in [None, 'DIFF', 'IMG']:
-            raise ValueError('`signal_type={signal_type}` is invalid, only `None`, `"DIFF"`, and `"IMG"` are accepted values'.format(signal_type=signal_type))
+            raise ValueError(
+                '`signal_type={signal_type}` is invalid, only `None`, `"DIFF"`, and `"IMG"` are accepted values'.format(
+                    signal_type=signal_type))
         if signal_type is None:
             if self.units_widget.currentText() in ['cm', 'mm']:
                 self.signal_type = 'DIFF'
@@ -197,7 +200,8 @@ class MIBDataFile(QObject):
                 elif self.units_widget.currentText() == 'mm':
                     mag = self.scale_widget.value() / 10
                 else:
-                    raise ValueError('Units widget value {units} is not recognized as a cameralength unit'.format(units=self.units_widget.currentText()))
+                    raise ValueError('Units widget value {units} is not recognized as a cameralength unit'.format(
+                        units=self.units_widget.currentText()))
             else:
                 self.signal_type = 'IMG'
                 if self.units_widget.currentText() == 'x':
@@ -207,11 +211,12 @@ class MIBDataFile(QObject):
                 elif self.units_widget.currentText() == 'Mx':
                     mag = self.scale_widget.value() * 1E6
                 else:
-                    raise ValueError('Units widget value {units} is not recognized as a magnification unit'.format(units=self.units_widget.currentText()))
+                    raise ValueError('Units widget value {units} is not recognized as a magnification unit'.format(
+                        units=self.units_widget.currentText()))
         else:
             self.signal_type = signal_type
 
-        #Change to get acceleration voltage from spinboxes in future.
+        # Change to get acceleration voltage from spinboxes in future.
         if self.signal_type == 'DIFF':
             query = '`Acceleration Voltage (V)`==200000 & `Camera` == "Merlin" & `Nominal Cameralength (cm)` == @mag'
             calibration_matches = calibration_table.query(query)['Scale (1/nm)']
@@ -225,12 +230,15 @@ class MIBDataFile(QObject):
             offset = 0.0
             name_prefix = ''
         else:
-            raise ValueError('Could not determine signal type {signal_type} for {self!r}'.format(signal_type=signal_type, self=self))
+            raise ValueError(
+                'Could not determine signal type {signal_type} for {self!r}'.format(signal_type=signal_type, self=self))
 
         if len(calibration_matches) > 1:
-            print('More than one calibration match was found ({n}). Using first match'.format(n=len(calibration_matches)))#Change to use most recent match
+            print('More than one calibration match was found ({n}). Using first match'.format(
+                n=len(calibration_matches)))  # Change to use most recent match
         elif len(calibration_matches) <= 0:
-            print('No calibration match was found ({n})'.format(n=len(calibration_matches)))  # Change to use most recent match
+            print('No calibration match was found ({n})'.format(
+                n=len(calibration_matches)))  # Change to use most recent match
             return False
         print(calibration_matches)
         scale = calibration_matches.iloc[0]
@@ -239,19 +247,20 @@ class MIBDataFile(QObject):
         self.data.axes_manager[1].scale = float(scale)
         self.data.axes_manager[0].units = scale_units
         self.data.axes_manager[1].units = scale_units
-        self.data.axes_manager[0].offset = offset*self.data.axes_manager[0].size*self.data.axes_manager[0].scale
+        self.data.axes_manager[0].offset = offset * self.data.axes_manager[0].size * self.data.axes_manager[0].scale
         self.data.axes_manager[1].offset = offset * self.data.axes_manager[1].size * self.data.axes_manager[1].scale
         self.data.axes_manager[0].name = '{prefix}x'.format(prefix=name_prefix)
         self.data.axes_manager[1].name = '{prefix}y'.format(prefix=name_prefix)
         return True
 
-class MainWindow(QtWidgets.QMainWindow):
+
+class FrameConverterWindow(QtWidgets.QMainWindow):
     data_root = Path(r'C:\Users\emilc\OneDrive - NTNU\NORTEM\Merlin')
     fileListRefreshed = pyqtSignal([], [dict], name='fileListRefreshed')
 
     def __init__(self, *args, **kwargs):
-        super(MainWindow, self).__init__(*args, **kwargs)
-        uic.loadUi(str(Path(__file__).parent / './source/QTCmibConverter/mibConverter/mainwindow.ui'), self)
+        super(FrameConverterWindow, self).__init__(*args, **kwargs)
+        uic.loadUi(str(Path(__file__).parent / './source/mib2hspy/frame_converter.ui'), self)
         self.setWindowTitle('mib batch converter')
 
     @pyqtSlot(str, name='browseInputFile', result=str)
@@ -324,7 +333,8 @@ class mibConverterModel(QObject):
         super(mibConverterModel, self).__init__(*args, **kwargs)
         self.directory = None
         self.files = None
-        self.calibration_table = pd.read_excel(str(Path(__file__).parent / '../../Calibrations.xlsx'), engine='openpyxl')
+        self.calibration_table = pd.read_excel(str(Path(__file__).parent / '../../Calibrations.xlsx'),
+                                               engine='openpyxl')
 
     def set_directory(self, directory):
         """
@@ -415,7 +425,7 @@ class mibConverterController(object):
         """
         Create controller for the mibconverter gui
         :param view: The main gui window.
-        :type view: MainWindow
+        :type view: FrameConverterWindow
         :param model: The model to control.
         :type model: mibConverterModel
         """
@@ -489,11 +499,14 @@ class PlotWindow(QtWidgets.QDialog):
             if scale_bar_length < 0.1:
                 if scale_bar_length < 0.01:
                     if scale_bar_length < 0.001:
-                        scalebar_label = '{scale_bar_length} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+                        scalebar_label = '{scale_bar_length} {units}'.format(scale_bar_length=scale_bar_length,
+                                                                             units=units)
                     else:
-                        scalebar_label = '{scale_bar_length:.3f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+                        scalebar_label = '{scale_bar_length:.3f} {units}'.format(scale_bar_length=scale_bar_length,
+                                                                                 units=units)
                 else:
-                    scalebar_label = '{scale_bar_length:.2f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
+                    scalebar_label = '{scale_bar_length:.2f} {units}'.format(scale_bar_length=scale_bar_length,
+                                                                             units=units)
             else:
                 scalebar_label = '{scale_bar_length:.1f} {units}'.format(scale_bar_length=scale_bar_length, units=units)
         else:
@@ -522,7 +535,7 @@ def main():
 
     myqui = QtWidgets.QApplication(sys.argv)
 
-    main_window = MainWindow()
+    main_window = FrameConverterWindow()
     main_window.show()
 
     model = mibConverterModel(parent=main_window)

@@ -16,6 +16,7 @@ HEADERS += \
     mainwindow.h
 
 FORMS += \
+    frame_converter.ui \
     mainwindow.ui
 
 # Default rules for deployment.
