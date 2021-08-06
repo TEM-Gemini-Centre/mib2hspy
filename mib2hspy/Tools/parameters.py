@@ -539,7 +539,7 @@ class ScanStep(CalibratedParameter):
 
 class AcquisitionDate(Parameter):
     def __init__(self, date):
-        super(AcquisitionDate, self).__init__('Acquisition Date', date, '')
+        super(AcquisitionDate, self).__init__('Acquisition Date', date, 'YYYY-MM-DD')
 
 
 class Camera(Parameter):
@@ -1538,11 +1538,11 @@ class MicroscopeParameters(object):
         :rtype: dict
         """
         params = {}
-        [params.update({parameter.name.replace(' ', '_').lower(): {'Nominal value': parameter.nominal_value,
-                                                                   'Actual value': parameter.value,
-                                                                   'Units': parameter.units}}) if isinstance(
+        [params.update({parameter.name.replace(' ', '_').lower(): {'Nominal value': str(parameter.nominal_value),
+                                                                   'Actual value': str(parameter.value),
+                                                                   'Units': str(parameter.units)}}) if isinstance(
             parameter, CalibratedParameter) else params.update(
-            {parameter.name.replace(' ', '_').lower(): {'Value': parameter.value, 'Units': parameter.units}}) for
+            {parameter.name.replace(' ', '_').lower(): {'Value': str(parameter.value), 'Units': str(parameter.units)}}) for
          parameter in self]
         return params
 
