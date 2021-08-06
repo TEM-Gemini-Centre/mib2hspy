@@ -5,10 +5,307 @@ import traceback
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QAbstractTableModel, QRunnable, QAbstractItemModel
 from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QSizePolicy
 
 from pathlib import Path
 
+from datetime import datetime
+
 import logging
+
+
+class QMicroscope(QtWidgets.QWidget):
+    def __init__(self, *args, **kwargs):
+        """
+
+        :param microscope_parameters: The microscope parameters connected to the parameter view
+        :param args: Optional positional arguments passed to the QWidget constructor.
+        :param kwargs: Optional keyword arguments passed to the QWidget constructor.
+        :type microscope_parameters: Union[MicroscopeParameters, None]
+        """
+        super(QMicroscope, self).__init__(*args, **kwargs)
+
+        # Set up main layout
+        self.mainLayout = QtWidgets.QHBoxLayout()
+        self.setLayout(self.mainLayout)
+
+        # Set up group boxes
+        self.controlGroup = QtWidgets.QGroupBox(self)
+        self.controlGroup.setTitle('Nominal acquisition parameters')
+        self.controlGroupLayout = QtWidgets.QVBoxLayout()
+        #self.controlGroupLayout.addStretch()
+        self.controlGroup.setLayout(self.controlGroupLayout)
+        self.mainLayout.addWidget(self.controlGroup)
+
+        self.viewGroup = QtWidgets.QGroupBox(self)
+        self.viewGroup.setTitle('Acquisition parameter view')
+        self.viewGroupLayout = QtWidgets.QVBoxLayout()
+        self.viewGroup.setLayout(self.viewGroupLayout)
+        self.mainLayout.addWidget(self.viewGroup)
+
+        #Set up view widgets
+        self.tableView = QtWidgets.QTableView()
+        self.viewGroupLayout.addWidget(self.tableView)
+
+        # Set up control widgets
+        self.controlScrollArea = QtWidgets.QScrollArea(self.controlGroup)
+        self.controlGroupLayout.addWidget(self.controlScrollArea)
+        self.controlScrollArea.setWidgetResizable(True)
+        self.controlScrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.controlScrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.controlScrollAreaLayout = QtWidgets.QGridLayout()
+
+        # HT
+        self.highTensionCheckBox = QtWidgets.QCheckBox('High Tension', self)
+        self.highTensionSpinBox = QtWidgets.QSpinBox(self)
+        self.highTensionUnitsLabel = QtWidgets.QLabel('keV')
+        self.controlScrollAreaLayout.addWidget(self.highTensionCheckBox, 0, 0)
+        self.controlScrollAreaLayout.addWidget(self.highTensionSpinBox, 0, 1)
+        self.controlScrollAreaLayout.addWidget(self.highTensionUnitsLabel, 0, 2)
+
+        # Magnification
+        self.magnificationCheckBox = QtWidgets.QCheckBox('Magnification')
+        self.magnificationSpinBox = QtWidgets.QSpinBox()
+        self.magnificationSelector = QtWidgets.QComboBox()
+        self.controlScrollAreaLayout.addWidget(self.magnificationCheckBox, 1, 0)
+        self.controlScrollAreaLayout.addWidget(self.magnificationSpinBox, 1, 1)
+        self.controlScrollAreaLayout.addWidget(self.magnificationSelector, 1, 2)
+
+        # Cameralength
+        self.cameraLengthCheckBox = QtWidgets.QCheckBox('Cameralength')
+        self.cameraLengthSpinBox = QtWidgets.QSpinBox()
+        self.cameraLengthUnitsLabel = QtWidgets.QLabel('cm')
+        self.controlScrollAreaLayout.addWidget(self.cameraLengthCheckBox, 2, 0)
+        self.controlScrollAreaLayout.addWidget(self.cameraLengthSpinBox, 2, 1)
+        self.controlScrollAreaLayout.addWidget(self.cameraLengthUnitsLabel, 2, 2)
+
+        # Mode
+        self.modeCheckBox = QtWidgets.QCheckBox('Mode')
+        self.modeSelector = QtWidgets.QComboBox()
+        self.controlScrollAreaLayout.addWidget(self.modeCheckBox, 3, 0)
+        self.controlScrollAreaLayout.addWidget(self.modeSelector, 3, 1)
+
+        #Alpha
+        self.alphaCheckBox = QtWidgets.QCheckBox('Alpha')
+        self.alphaSpinBox = QtWidgets.QSpinBox()
+        self.controlScrollAreaLayout.addWidget(self.alphaCheckBox, 4, 0)
+        self.controlScrollAreaLayout.addWidget(self.alphaSpinBox, 4, 1)
+
+        #Spot
+        self.spotCheckBox = QtWidgets.QCheckBox('Spot')
+        self.spotSpinBox = QtWidgets.QSpinBox()
+        self.controlScrollAreaLayout.addWidget(self.spotCheckBox, 5, 0)
+        self.controlScrollAreaLayout.addWidget(self.spotSpinBox, 5, 1)
+
+        #Spotsize
+        self.spotSizeCheckBox = QtWidgets.QCheckBox('Spotsize')
+        self.spotSizeSpinBox = QtWidgets.QDoubleSpinBox()
+        self.spotSizeUnitsLabel = QtWidgets.QLabel('nm')
+        self.controlScrollAreaLayout.addWidget(self.spotSizeCheckBox, 6, 0)
+        self.controlScrollAreaLayout.addWidget(self.spotSizeSpinBox, 6, 1)
+        self.controlScrollAreaLayout.addWidget(self.spotSizeUnitsLabel, 6, 2)
+
+        #Condenser aperture
+        self.condenserApertureCheckBox = QtWidgets.QCheckBox('Condenser Aperture')
+        self.condenserApertureSpinBox = QtWidgets.QSpinBox()
+        self.condenserApertureUnitsLabel = QtWidgets.QLabel('um')
+        self.controlScrollAreaLayout.addWidget(self.condenserApertureCheckBox, 7, 0)
+        self.controlScrollAreaLayout.addWidget(self.condenserApertureSpinBox, 7, 1)
+        self.controlScrollAreaLayout.addWidget(self.condenserApertureUnitsLabel, 7, 2)
+
+        # Convergence angle
+        self.convergenceAngleCheckBox = QtWidgets.QCheckBox('Convergence Angle')
+        self.convergenceAngleSpinBox = QtWidgets.QDoubleSpinBox()
+        self.convergenceAngleUnitsLabel = QtWidgets.QLabel('mrad')
+        self.controlScrollAreaLayout.addWidget(self.convergenceAngleCheckBox, 8, 0)
+        self.controlScrollAreaLayout.addWidget(self.convergenceAngleSpinBox, 8, 1)
+        self.controlScrollAreaLayout.addWidget(self.convergenceAngleUnitsLabel, 8, 2)
+
+        # Precession frequency
+        self.precessionFrequencyCheckBox = QtWidgets.QCheckBox('Rocking Frequency')
+        self.precessionFrequencySpinBox = QtWidgets.QSpinBox()
+        self.precessionFrequencyUnitsLabel = QtWidgets.QLabel('Hz')
+        self.controlScrollAreaLayout.addWidget(self.precessionFrequencyCheckBox, 9, 0)
+        self.controlScrollAreaLayout.addWidget(self.precessionFrequencySpinBox, 9, 1)
+        self.controlScrollAreaLayout.addWidget(self.precessionFrequencyUnitsLabel, 9, 2)
+
+        # Rocking angle
+        self.precessionAngleCheckBox = QtWidgets.QCheckBox('Rocking Angle')
+        self.precessionAngleSpinBox = QtWidgets.QDoubleSpinBox()
+        self.precessionAngleUnitsLabel = QtWidgets.QLabel('deg')
+        self.controlScrollAreaLayout.addWidget(self.precessionAngleCheckBox, 10, 0)
+        self.controlScrollAreaLayout.addWidget(self.precessionAngleSpinBox, 10, 1)
+        self.controlScrollAreaLayout.addWidget(self.precessionAngleUnitsLabel, 10, 2)
+
+        # Acquisition date
+        self.acquisitionDateCheckBox = QtWidgets.QCheckBox('Acquisition Date')
+        self.acquisitionDate = QtWidgets.QDateEdit(datetime.now().date())
+        self.controlScrollAreaLayout.addWidget(self.acquisitionDateCheckBox, 11, 0)
+        self.controlScrollAreaLayout.addWidget(self.acquisitionDate, 11, 1)
+
+        # Camera
+        self.cameraCheckBox = QtWidgets.QCheckBox('Camera')
+        self.cameraComboBox = QtWidgets.QComboBox()
+        self.controlScrollAreaLayout.addWidget(self.cameraCheckBox, 12, 0)
+        self.controlScrollAreaLayout.addWidget(self.cameraComboBox, 12, 1)
+
+        # Microscope
+        self.microscopeCheckBox = QtWidgets.QCheckBox('Microscope')
+        self.microscopeComboBox = QtWidgets.QComboBox()
+        self.controlScrollAreaLayout.addWidget(self.microscopeCheckBox, 13, 0)
+        self.controlScrollAreaLayout.addWidget(self.microscopeComboBox, 13, 1)
+
+        # Scan steps
+        self.stepGroupBox = QtWidgets.QGroupBox('Scan step')
+        self.stepLayout = QtWidgets.QGridLayout()
+        self.stepGroupBox.setLayout(self.stepLayout)
+        self.stepGroupBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        self.controlScrollAreaLayout.addWidget(self.stepGroupBox, 14, 0, 3, 3)
+        self.stepXDirectionLabel = QtWidgets.QLabel('X')
+        self.stepYDirectionLabel = QtWidgets.QLabel('Y')
+        self.stepXSpinBox = QtWidgets.QDoubleSpinBox()
+        self.stepYSpinBox = QtWidgets.QDoubleSpinBox()
+        self.stepXUnitsLabel = QtWidgets.QLabel('nm')
+        self.stepYUnitsLabel = QtWidgets.QLabel('nm')
+
+        #Stretcher
+        self.controlScrollAreaStretcher = QtWidgets.QVBoxLayout()
+        self.controlScrollAreaStretcher.addStretch()
+        self.controlScrollAreaLayout.addLayout(self.controlScrollAreaStretcher, 17, 0, 1, 3)
+
+        #Set the control layout
+        self.controlScrollArea.setLayout(self.controlScrollAreaLayout)
+
+        self.setup_controllers()
+
+    def setup_controllers(self):
+        #HT
+        self.highTensionSpinBox.setMinimum(0)
+        self.highTensionSpinBox.setMaximum(200)
+        self.highTensionCheckBox.stateChanged.connect(lambda x: self.highTensionSpinBox.setEnabled(bool(x)))
+        self.highTensionCheckBox.setChecked(True)
+
+        #Magnification
+        self.magnificationSpinBox.setMinimum(0)
+        self.magnificationSpinBox.setMaximum(2000000)
+        self.magnificationSpinBox.setSingleStep(1000)
+        self.magnificationSelector.addItems(['MAG1', 'SAMAG'])
+        self.magnificationCheckBox.stateChanged.connect(lambda x: self.magnificationSpinBox.setEnabled(bool(x)))
+        self.magnificationCheckBox.stateChanged.connect(lambda x: self.magnificationSelector.setEnabled(bool(x)))
+        self.magnificationCheckBox.setChecked(False)
+
+        #Cameralength
+        self.cameraLengthSpinBox.setMinimum(8)
+        self.cameraLengthSpinBox.setMaximum(200)
+        self.cameraLengthSpinBox.setSingleStep(1)
+        self.cameraLengthCheckBox.stateChanged.connect(lambda x: self.cameraLengthSpinBox.setEnabled(bool(x)))
+        self.cameraLengthCheckBox.setChecked(False)
+
+        #Mode
+        self.modeSelector.addItems(['None', 'STEM', 'LMSTEM', 'TEM', 'NBD', 'CBD'])
+        self.modeSelector.setCurrentText('NBD')
+        self.modeCheckBox.stateChanged.connect(lambda x: self.modeSelector.setEnabled(bool(x)))
+        self.modeCheckBox.setChecked(False)
+
+        # Alpha
+        self.alphaSpinBox.setMinimum(1)
+        self.alphaSpinBox.setMaximum(5)
+        self.alphaSpinBox.setSingleStep(1)
+        self.alphaSpinBox.setValue(5)
+        self.alphaCheckBox.stateChanged.connect(lambda x: self.alphaSpinBox.setEnabled(bool(x)))
+        self.alphaCheckBox.setChecked(False)
+
+        # Spot
+        self.spotSpinBox.setMinimum(1)
+        self.spotSpinBox.setMaximum(10)
+        self.spotSpinBox.setValue(1)
+        self.spotCheckBox.stateChanged.connect(lambda x: self.spotSpinBox.setEnabled(bool(x)))
+        self.spotCheckBox.setChecked(False)
+
+        # Spotsize
+        self.spotSizeSpinBox.setMinimum(0.1)
+        self.spotSizeSpinBox.setMaximum(10)
+        self.spotSizeSpinBox.setDecimals(2)
+        self.spotSizeSpinBox.setSingleStep(0.1)
+        self.spotSizeSpinBox.setValue(0.3)
+        self.spotSizeCheckBox.stateChanged.connect(lambda x: self.spotSizeSpinBox.setEnabled(bool(x)))
+        self.spotSizeCheckBox.setChecked(False)
+
+        #Condenser aperture
+        self.condenserApertureSpinBox.setMinimum(1)
+        self.condenserApertureSpinBox.setMaximum(500)
+        self.condenserApertureSpinBox.setValue(40)
+        self.condenserApertureSpinBox.setSingleStep(10)
+        self.condenserApertureCheckBox.stateChanged.connect(lambda x: self.condenserApertureSpinBox.setEnabled(bool(x)))
+        self.condenserApertureCheckBox.setChecked(False)
+
+        #Convergence angle
+        self.convergenceAngleSpinBox.setMinimum(0)
+        self.convergenceAngleSpinBox.setMaximum(99.99)
+        self.convergenceAngleSpinBox.setSingleStep(0.1)
+        self.convergenceAngleSpinBox.setDecimals(2)
+        self.convergenceAngleSpinBox.setValue(0)
+        self.convergenceAngleCheckBox.stateChanged.connect(lambda x: self.convergenceAngleSpinBox.setEnabled(bool(x)))
+
+        #Rocking frequency
+        self.precessionFrequencySpinBox.setMinimum(0)
+        self.precessionFrequencySpinBox.setMaximum(300)
+        self.precessionFrequencySpinBox.setSingleStep(10)
+        self.precessionFrequencySpinBox.setValue(100)
+        self.precessionFrequencyCheckBox.stateChanged.connect(lambda x: self.precessionFrequencySpinBox.setEnabled(bool(x)))
+        self.precessionFrequencyCheckBox.setChecked(False)
+
+        #Rocking angle
+        self.precessionAngleSpinBox.setMinimum(0)
+        self.precessionAngleSpinBox.setMaximum(10)
+        self.precessionAngleSpinBox.setSingleStep(0.1)
+        self.precessionAngleSpinBox.setDecimals(2)
+        self.precessionAngleSpinBox.setValue(1.00)
+        self.precessionAngleCheckBox.stateChanged.connect(lambda x: self.precessionAngleSpinBox.setEnabled(bool(x)))
+        self.precessionAngleCheckBox.setChecked(False)
+
+        #Acquisition date
+        self.acquisitionDate.setDisplayFormat('dd.MM.yyyy')
+        self.acquisitionDate.setMaximumDate(datetime.now().date())
+        self.acquisitionDate.setCalendarPopup(True)
+        self.acquisitionDateCheckBox.stateChanged.connect(lambda x: self.acquisitionDate.setEnabled(bool(x)))
+        self.acquisitionDateCheckBox.setChecked(False)
+
+        #Camera
+        self.cameraComboBox.addItems(['Merlin', 'US1000 1'])
+        self.cameraComboBox.setCurrentText('Merlin')
+        self.cameraCheckBox.stateChanged.connect(lambda x: self.cameraComboBox.setEnabled(bool(x)))
+        self.cameraCheckBox.setChecked(True)
+
+        #Microscope
+        self.microscopeComboBox.addItems(['2100', '2100F', 'ARM200F'])
+        self.microscopeComboBox.setCurrentText('2100F')
+        self.microscopeCheckBox.stateChanged.connect(lambda x: self.microscopeComboBox.setEnabled(bool(x)))
+        self.microscopeCheckBox.setChecked(True)
+
+        #Scan steps
+        self.stepGroupBox.setCheckable(True)
+        for row, direction in enumerate(['X', 'Y']):
+            if direction == 'X':
+                direction_label = self.stepXDirectionLabel
+                spinbox = self.stepXSpinBox
+                units_label = self.stepXUnitsLabel
+            else:
+                direction_label = self.stepYDirectionLabel
+                spinbox = self.stepYSpinBox
+                units_label = self.stepYUnitsLabel
+            spinbox.setMinimum(0)
+            spinbox.setMaximum(1000)
+            spinbox.setDecimals(2)
+            spinbox.setSingleStep(0.1)
+
+            self.stepLayout.addWidget(direction_label, row, 0)
+            self.stepLayout.addWidget(spinbox, row, 1)
+            self.stepLayout.addWidget(units_label, row, 2)
+            self.stepGroupBox.toggled.connect(lambda x: spinbox.setEnabled(bool(x)))
+        self.stepGroupBox.setChecked(False)
+
 
 class QTextEditLogger(logging.Handler, QObject):
     appendPlainText = pyqtSignal(str)
@@ -16,7 +313,7 @@ class QTextEditLogger(logging.Handler, QObject):
     def __init__(self, widget):
         super().__init__()
         QObject.__init__(self)
-        #self.widget = QtWidgets.QPlainTextEdit(parent)
+        # self.widget = QtWidgets.QPlainTextEdit(parent)
         self.widget = widget
         self.widget.setReadOnly(True)
         self.appendPlainText.connect(self.widget.appendPlainText)
@@ -24,6 +321,7 @@ class QTextEditLogger(logging.Handler, QObject):
     def emit(self, record):
         msg = self.format(record)
         self.appendPlainText.emit(msg)
+
 
 class WorkerSignals(QObject):
     """
@@ -75,7 +373,7 @@ class Worker(QRunnable):
         self.result = None
 
         # Add the callback to our kwargs
-        #self.kwargs['progress_callback'] = self.signals.progress
+        # self.kwargs['progress_callback'] = self.signals.progress
 
     @pyqtSlot()
     def run(self):
@@ -161,8 +459,9 @@ class DataFrameModel(QAbstractTableModel):
         }
         return roles
 
+
 class DictionaryTreeModel(QAbstractItemModel):
-    def __init__(self, dictionary = {}, parent=None):
+    def __init__(self, dictionary={}, parent=None):
         super(DictionaryTreeModel, self).__init__(parent=parent)
         self._dictionary = dict(dictionary)
 
@@ -171,7 +470,8 @@ class DictionaryTreeModel(QAbstractItemModel):
         self._dictionary = dict(dictionary)
         self.endResetModel()
 
-    #def
+    # def
+
 
 class Error(Exception):
     pass
@@ -297,8 +597,9 @@ class StatusIndicator(QtWidgets.QLabel):
         1: [1, 'Active', 'On', True],
         2: [2, 'Busy', 'Pending']
     }
-    accepted_statuses = none_statuses+off_statuses+on_statuses+busy_statuses
-    #_ = [accepted_statuses.extend(status_values[key] for key in status_values)]
+    accepted_statuses = none_statuses + off_statuses + on_statuses + busy_statuses
+
+    # _ = [accepted_statuses.extend(status_values[key] for key in status_values)]
 
     def __init__(self, *args, initial_status=None, **kwargs):
         """
@@ -318,7 +619,9 @@ class StatusIndicator(QtWidgets.QLabel):
 
     def set_status(self, status):
         if status not in self.accepted_statuses:
-            raise StatusError('Status {status!r} not found in accepted statuses {self.accepted_statuses!r}'.format(status=status, self=self))
+            raise StatusError(
+                'Status {status!r} not found in accepted statuses {self.accepted_statuses!r}'.format(status=status,
+                                                                                                     self=self))
         self._status = status
 
         try:
@@ -331,7 +634,8 @@ class StatusIndicator(QtWidgets.QLabel):
             elif self.is_none():
                 pixmap_path = self.none_pixmap_path
             else:
-                raise StatusError('Cannot redraw status indicator. Status {status} is not recognized!'.format(status=self.Status()))
+                raise StatusError(
+                    'Cannot redraw status indicator. Status {status} is not recognized!'.format(status=self.Status()))
         except StatusError:
             raise
         else:
@@ -366,7 +670,7 @@ class StatusIndicator(QtWidgets.QLabel):
     def Status(self):
         return self.get_status()
 
-    @pyqtSlot(int, name = 'setStatus')
+    @pyqtSlot(int, name='setStatus')
     @pyqtSlot(str, name='setStatus')
     @pyqtSlot(bool, name='setStatus')
     def setStatus(self, status):
@@ -431,9 +735,11 @@ class StatusIndicator(QtWidgets.QLabel):
         elif self.isNone():
             pixmap_path = self.none_pixmap_path
         else:
-            raise StatusError('Cannot redraw status indicator. Status {status} is not recognized!'.format(self.Status()))
+            raise StatusError(
+                'Cannot redraw status indicator. Status {status} is not recognized!'.format(self.Status()))
         pixmap = QPixmap(str(pixmap_path))
         if pixmap.isNull():
             raise ValueError(
                 'Image for status {self.status} is Null (path: "{path}"!'.format(self=self, path=pixmap_path))
         self.setPixmap(pixmap)
+

@@ -7,7 +7,7 @@ from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QObject
 import pandas as pd
 from math import sqrt, isclose, nan
 from mib2hspy.gui.guiTools import DataFrameModel
-from mib2hspy.Tools import Converter
+from mib2hspy.Tools import Converter, MicroscopeParameters
 
 
 class ParameterController(QObject):
@@ -503,6 +503,7 @@ class ConverterView(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super(ConverterView, self).__init__(*args, **kwargs)
         uic.loadUi(str(Path(__file__).parent / './source/mib2hspy/stack_converter.ui'), self)
+        #uic.loadUi(str(Path(__file__).parent / './source/mib2hspy/stack_converter_simple.ui'), self)
         self.setWindowTitle('mib2hspy converter')
         self.threadpool = QThreadPool()
         self._settings = {}
@@ -594,7 +595,9 @@ class ConverterController(object):
 
         self._view = view
         self._model = model
-        self._parameter_controller = ParameterController(self._view, self._model.converter.microscope_parameters)
+        #self._parameter_controller = ParameterController(self._view.parameterWidget, self._model.converter.microscope_parameters)
+        self._parameter_controller = ParameterController(self._view,
+                                                         self._model.converter.microscope_parameters)
 
         # Setup calibration table signals
         self._view.calibrationPathLineEdit.setText(self.default_calibration_file)
@@ -672,7 +675,9 @@ class ConverterController(object):
     def update_view(self):
         self._view.dataPathLineEdit.setText(str(self._model.converter.data_path))
         if self._model.converter.data is not None:
-            self._view.signalLabel.setText(str(self._model.converter.data).replace(', title: {title}'.format(title=self._model.converter.data.metadata.General.title), ', title: {short_title}...'.format(short_title=self._model.converter.data.metadata.General.title[:6])))
+            self._view.signalLabel.setText(str(self._model.converter.data).replace(
+                ', title: {title}'.format(title=self._model.converter.data.metadata.General.title),
+                ', title: {short_title}...'.format(short_title=self._model.converter.data.metadata.General.title[:6])))
         else:
             self._view.signalLabel.setText(self._model.converter.data)
         self.update_write_button()
@@ -735,7 +740,6 @@ class ConverterController(object):
         else:
             self._view.chunkKySpinBox.setEnabled(False)
 
-
     def reshape_stack(self):
         try:
             self._model.converter.reshape(self._view.nXSpinBox.value(), self._view.nYSpinBox.value())
@@ -761,7 +765,9 @@ class ConverterController(object):
 
     def rechunk_data(self):
         try:
-            chunks = tuple([spinbox.value() for spinbox in [self._view.chunkXSpinBox, self._view.chunkYSpinBox, self._view.chunkKxSpinBox, self._view.chunkKySpinBox] if spinbox.isEnabled()])
+            chunks = tuple([spinbox.value() for spinbox in
+                            [self._view.chunkXSpinBox, self._view.chunkYSpinBox, self._view.chunkKxSpinBox,
+                             self._view.chunkKySpinBox] if spinbox.isEnabled()])
             self._model.converter.rechunk(chunks)
         except Exception as e:
             logging.getLogger().error(e)
@@ -838,8 +844,11 @@ class ConverterController(object):
                 logging.getLogger().info('Data written successfully!')
 
         if self._view.VBFGroupBox.isChecked():
-            fig = self._model.converter.plot_vbf(vbf_kwargs={'cx': self._view.cXSpinBox.value(), 'cy':self._view.cYSpinBox.value(), 'width': self._view.widthSpinBox.value()})
-            fig.savefig(self._model.converter.data_path.parent / '{p.stem}_VBF.png'.format(p=self._model.converter.data_path))
+            fig = self._model.converter.plot_vbf(
+                vbf_kwargs={'cx': self._view.cXSpinBox.value(), 'cy': self._view.cYSpinBox.value(),
+                            'width': self._view.widthSpinBox.value()})
+            fig.savefig(
+                self._model.converter.data_path.parent / '{p.stem}_VBF.png'.format(p=self._model.converter.data_path))
 
     def set_calibration_table(self, path=None):
         try:
@@ -910,6 +919,26 @@ def dict2treeItems(parent, dictionary, exclude_patterns=[]):
                 # item.addChild(child)
             items.append(item)
     return items
+
+
+def deleteItemsOfLayout(layout):
+    """
+    Removes widgets and layouts from a layout
+    :param layout: QtWidgets.QLayout
+    :return: None
+    """
+    if layout is not None:
+        while layout.count():
+            item = layout.takeAt(0)
+            try:
+                widget = item.widget()
+            except AttributeError as e:
+                raise
+            else:
+                if widget is not None:
+                    widget.setParent(None)
+                else:
+                    deleteItemsOfLayout(item.layout())
 
 
 def run_gui(log_level=logging.INFO):

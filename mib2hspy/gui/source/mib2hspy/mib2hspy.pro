@@ -19,6 +19,7 @@ FORMS += \
     frame_converter.ui \
     mainwindow.ui \
     stack_converter.ui \
+    stack_converter_simple.ui \
     vbf.ui
 
 # Default rules for deployment.
