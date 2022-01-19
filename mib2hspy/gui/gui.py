@@ -1,16 +1,16 @@
 import logging
 import sys
-from datetime import datetime, date
+from datetime import date
+from math import sqrt, isnan
 from pathlib import Path
-from PyQt5 import uic, QtWidgets, QtGui
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QThreadPool, QObject, QDate, Qt
-from math import sqrt, isclose, nan, isnan
-import numpy as np
-from tabulate import tabulate
+from warnings import warn
 
 import hyperspy.api as hs
+import numpy as np
 import pyxem as pxm
-from warnings import warn
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QObject, QDate
+from tabulate import tabulate
 
 # create logger
 logger = logging.getLogger(f'{__file__}')
@@ -30,6 +30,7 @@ ch.setFormatter(formatter)
 
 # add ch to logger
 logger.addHandler(ch)
+
 
 class Error(Exception):
     pass
@@ -51,7 +52,14 @@ class StepSizeError(Error):
     pass
 
 
+class SignalModelError(Error):
+    pass
+
+
 class SignalModel(QObject):
+    """
+    Model for setting Signal conversion parameters through a GUI
+    """
     signalChanged = pyqtSignal([], [str])
     pathChanged = pyqtSignal([], [str], [Path])
     chunksChanged = pyqtSignal([], [tuple])
@@ -83,7 +91,7 @@ class SignalModel(QObject):
     spotsizeChanged = pyqtSignal([], [float])
 
     default_detector_shape = (256, 256)
-    default_detector_pixel_size = (55E-4, 55E-4) #Pixel size in cm
+    default_detector_pixel_size = (55E-4, 55E-4)  # Pixel size in cm
     default_chunk_size = 32
     default_step_size = (1., 1.)
     default_scan_units = 'px'
@@ -114,33 +122,73 @@ class SignalModel(QObject):
     default_spot = 0
 
     supported_file_formats = ('hspy', 'hdf5', 'blo')
+    supported_signal_types = (type(None), hs.signals.BaseSignal)
 
     @property
     def silent(self):
+        """
+        Get whether the model is silent (emitting gui-signals) or not
+        :return:
+        """
         return self._silent
 
     @silent.setter
     def silent(self, value):
+        """
+        Set whether the model is silent (emitting gui-signals) or not
+        :param value: Whether the signal should be silent or not
+        :type value: bool
+        :return:
+        """
         logger.debug(f'Setting {self.__class__.__name__}.silent={value!r}')
         self._silent = bool(value)
         self.blockSignals(self._silent)
 
     @property
     def signal(self):
+        """
+        Get the hyperspy signal associated with the model
+        :return: The current signal associated with the model
+        :rtype: Union[hyperspy.api.Signal, None]
+        """
         return self._signal
 
     @signal.setter
     def signal(self, value):
+        """
+        Set the current hyperspy signal associated with the model
+        :param value: The signal associated with the model
+        :type value: Union[None, hyperspy.api.Signal]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.signal={value!r}')
-        self._signal = value
-        self.signalChanged.emit()
+        if isinstance(value, self.supported_signal_types):
+            self._signal = value
+            self.signalChanged.emit()
+        else:
+            raise TypeError(
+                f"Cannot set signal associated to model {self!r} to {value} of invalid type {type(value)}. Accepted types are {self.supported_signal_types}.")
 
     @property
     def path(self):
+        """
+        Get the path to the current dataset
+        :return: The path to the current dataset
+        :rtype: Union[None, Path]
+        """
         return self._path
 
     @path.setter
     def path(self, value):
+        """
+        Set the path to the current .mib dataset.
+
+        This will emit the pathChanged signal unless the model has been set to silent.
+
+        :param value: A valid path to a .mib dataset.
+        :type value: Union[Path, str]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.path={value!r}')
         if isinstance(value, (str, Path)):
             path = Path(value)
@@ -159,20 +207,46 @@ class SignalModel(QObject):
 
     @property
     def chunks(self):
+        """
+        Get the current chunking that will be applied to the signal when converted.
+        :return: chunks
+        :rtype: tuple
+        """
         return self._chunks
 
     @chunks.setter
     def chunks(self, value):
+        """
+        Set the chunking that will be applied to the signal when converted.
+        :param value: The chunks
+        :type value: tuple of size 4.
+        :return:
+        """
         logger.debug(f'Setting {self.__class__.__name__}.chunks={value!r}')
-        self._chunks = value
-        self.chunksChanged.emit()
+        if isinstance(value, (list, tuple)):
+            self._chunks = value
+            self.chunksChanged.emit()
+        else:
+            raise TypeError(
+                f'Cannot set chunking to {value} of invalid type {type(value)}. Accepted types are `list` and `tuple`.')
 
     @property
     def nx(self):
+        """
+        Get the scan pixels along the x-direction to be applied to the converted signal.
+        :return: The number of pixels along the x-direction.
+        :rtype: int
+        """
         return self.shape[0]
 
     @nx.setter
     def nx(self, value):
+        """
+        Set the scan pixels along the x-direction to be appllied to the converted signal.
+        :param value: The number of pixels along the x-direction
+        :type value: int
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.nx={value!r}')
         if isinstance(value, int):
             self.shape = (value, self.shape[1], self.shape[2], self.shape[3])
@@ -181,10 +255,20 @@ class SignalModel(QObject):
 
     @property
     def ny(self):
+        """
+        Get the scan pixels along the y-direction to be applied to the converted signal.
+        :return: The number of pixels along the y-direction.
+        :rtype: int
+        """
         return self.shape[1]
 
     @ny.setter
     def ny(self, value):
+        """
+        Set the scan pixels along the y-direction to be applied to the converted signal.
+        :return: The number of pixels along the y-direction.
+        :rtype: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.ny={value!r}')
         if isinstance(value, int):
             self.shape = (self.shape[0], value, self.shape[2], self.shape[3])
@@ -193,10 +277,20 @@ class SignalModel(QObject):
 
     @property
     def ndx(self):
+        """
+        Get the detector pixels along the kx-direction to be applied to the converted signal.
+        :return: The number of pixels along the kx-direction of the detector.
+        :rtype: int
+        """
         return self._shape[2]
 
     @ndx.setter
     def ndx(self, value):
+        """
+        Set the number of detector pixels along the kx-direction to be applied to the converted signal.
+        :param value: The number of pixels along the kx-direction in the diffraction pattern.
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.ndx={value!r}')
         if isinstance(value, int):
             self.shape = (self.shape[0], self.shape[1], value, self.shape[3])
@@ -205,10 +299,20 @@ class SignalModel(QObject):
 
     @property
     def ndy(self):
+        """
+        Get the detector pixels along the ky-direction to be applied to the converted signal.
+        :return: The number of pixels along the ky-direction of the detector.
+        :rtype: int
+        """
         return self._shape[3]
 
     @ndy.setter
     def ndy(self, value):
+        """
+        Set the number of detector pixels along the ky-direction to be applied to the converted signal.
+        :param value: The number of pixels along the ky-direction in the diffraction pattern.
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.ndy={value!r}')
         if isinstance(value, int):
             self.shape = (self.shape[0], self.shape[1], self.shape[2], value)
@@ -217,26 +321,43 @@ class SignalModel(QObject):
 
     @property
     def shape(self):
+        """
+        Get the current shape that will be applied to the converted signal.
+        :return: The shape of the signal.
+        :rtype: tuple
+        """
         return self._shape
 
     @shape.setter
     def shape(self, value):
+        """
+        Set the current shape that will be applied to the converted signal.
+        :param value: The shape of the signal
+        :type value: Union[tuple, list, np.ndarray]
+        :return: None
+        """
         if isinstance(value, (tuple, list, np.ndarray)):
             if np.shape(value) == (4,):
                 if all([isinstance(val, int) for val in value]):
                     logger.debug(f'Setting {self.__class__.__name__}.shape={value!r}')
-                    self._shape = value
+                    self._shape = tuple(value)
                     self.shapeChanged.emit()
                     self.shapeChanged[tuple].emit(self.shape)
                 else:
                     raise TypeError(f'Cannot set shape of {self.signal} to {value}: Only integers are accepted')
             else:
-                raise ValueError(f'Cannot set shape of {self.signal}. {value} has invalid shape {np.shape(value)}. Accepted shape is (4,)')
+                raise ValueError(
+                    f'Cannot set shape of {self.signal}. {value} has invalid shape {np.shape(value)}. Accepted shape is (4,)')
         else:
-            raise TypeError(f'Cannot set shape of {self.signal}. {value} has invalid type {type(value)}. Accepted types are tuples, lists, and numpy.ndarrays')
+            raise TypeError(
+                f'Cannot set shape of {self.signal}. {value} has invalid type {type(value)}. Accepted types are tuples, lists, and numpy.ndarrays')
 
     @property
     def metadata(self):
+        """
+        Return the metadata of the current data signal.
+        :return: The metadata of the current signal
+        """
         try:
             return self.signal.metadata
         except AttributeError as e:
@@ -244,6 +365,10 @@ class SignalModel(QObject):
 
     @property
     def original_metadata(self):
+        """
+        Return the original metadata of the current data signal.
+        :return: The original metadata of the current signal
+        """
         try:
             return self.signal.original_metadata
         except AttributeError as e:
@@ -252,6 +377,10 @@ class SignalModel(QObject):
 
     @property
     def axes_manager(self):
+        """
+        Return the axes manager of the current data signal.
+        :return: The axes manager of the current signal.
+        """
         try:
             return self.signal.axes_manager
         except AttributeError as e:
@@ -259,15 +388,25 @@ class SignalModel(QObject):
 
     @property
     def pixel_size(self):
+        """
+        Return the physical pixel size/pitch of the detector.
+        :return: The physical pixel size in m.
+        """
         return self._pixel_size
 
     @pixel_size.setter
     def pixel_size(self, value):
+        """
+        Set the physical pixel size/pitch of the detector in two dimensions.
+        :param value: pixel size in m in two dimensions
+        :type value: Union[tuple, list, np.ndarray]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.pixel_size={value!r}')
         if isinstance(value, (tuple, list, np.ndarray)):
             if np.shape(value) == (2,):
                 if all([isinstance(val, (int, float)) or isnan(val) for val in value]):
-                    self._pixel_size = value
+                    self._pixel_size = tuple(value)
                     self.pixelSizeChanged.emit()
                 else:
                     raise PixelSizeError(
@@ -279,17 +418,33 @@ class SignalModel(QObject):
 
     @property
     def step_size(self):
+        """
+        Return the step size of the 2D scan.
+        :return: step_sizes
+        :rtype: 2-tuple
+        """
         return self._step_size
 
     @property
     def step_size_x(self):
+        """
+        Return the step size along the x-direction of the scan.
+        :return: x-direction stepsize
+        :rtype: float
+        """
         return self._step_size[0]
 
     @step_size_x.setter
     def step_size_x(self, value):
+        """
+        Set the step size along the x-direction of the scan.
+        :param value: x-direction stepsize
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.step_size_x={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
-            self._step_size = (value, self.step_size[1])
+            self._step_size = (float(value), self.step_size[1])
             self.stepSizeChanged.emit()
             self.stepSizeChanged[tuple].emit(self.step_size)
             self.stepSizeChanged[float, float].emit(self.step_size_x, self.step_size_y)
@@ -299,10 +454,21 @@ class SignalModel(QObject):
 
     @property
     def step_size_y(self):
+        """
+        Return the step size along the y-direction of the scan.
+        :return: y-direction stepsize
+        :rtype: float
+        """
         return self._step_size[1]
 
     @step_size_y.setter
     def step_size_y(self, value):
+        """
+        Set the step size along the y-direction of the scan.
+        :param value: y-direction stepsize
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.step_size_y={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
             self._step_size = (self.step_size[0], value)
@@ -314,15 +480,25 @@ class SignalModel(QObject):
 
     @property
     def axes_names(self):
+        """
+        Return the names of the axes to be used when converting the signal.
+        :return:
+        """
         return self._axes_names
 
     @axes_names.setter
     def axes_names(self, value):
+        """
+        Set the names of the axes to be used when converting the signal.
+        :param value: names of the axes (x, y, kx, ky)
+        :type value: Union[tuple, list, np.ndarray]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.axes_names={value!r}')
         if isinstance(value, (tuple, list, np.ndarray)):
             if np.shape(value) == (4,):
                 if all([isinstance(val, str) for val in value]):
-                    self._axes_names = value
+                    self._axes_names = tuple(value)
                 else:
                     raise TypeError(
                         f'Cannot set axes names of {self.signal} to {value!r}. Invalid types found in names: {", ".join([type(val) for val in value])}. Only `str` names are accepted.')
@@ -335,10 +511,21 @@ class SignalModel(QObject):
 
     @property
     def axes_units(self):
+        """
+        Return the axes units to be used when converting the signal
+        :return: axes units
+        :rtype: tuple
+        """
         return self._axes_units
 
     @axes_units.setter
     def axes_units(self, value):
+        """
+        Set the units of the axes to be used when converting the signal.
+        :param value: units of the axes (x, y, kx, ky)
+        :type value: Union[tuple, list, np.ndarray]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.axes_units={value!r}')
         if isinstance(value, (tuple, list, np.ndarray)):
             if np.shape(value) == (4,):
@@ -358,10 +545,22 @@ class SignalModel(QObject):
 
     @property
     def beam_energy(self):
+        """
+        Return the beam energy metadata
+        :return: beam energy in kV
+        :rtype: float
+        """
         return self._beam_energy
 
     @beam_energy.setter
     def beam_energy(self, value):
+        """
+        Set the beam energy metadata.
+
+        Values larger than 10000 will be interpreted as being given in Volts and be converted to kV before being set. Thus, if you actually have used higher acceleration voltages than 10 000 001 V, you will need to specify 10 000 001 000 as the acceleration voltage to circumvent the automatic unit conversion.
+        :param value: beam energy in kV
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.beam_energy={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -379,10 +578,21 @@ class SignalModel(QObject):
 
     @property
     def cameralength(self):
+        """
+        Return the cameralength metadata
+        :return: the cameralength in cm
+        :rtype: float
+        """
         return self._cameralength
 
     @cameralength.setter
     def cameralength(self, value):
+        """
+        Set the cameralength metadata
+        :param value: the cameralength in cm
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.cameralength={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -398,10 +608,22 @@ class SignalModel(QObject):
 
     @property
     def precession_angle(self):
+        """
+        Return the precession angle metadata
+        :return: the precession angle in degrees
+        :rtype: float
+        """
         return self._precession_angle
 
     @precession_angle.setter
     def precession_angle(self, value):
+        """
+        Set the precession angle metadata
+
+        :param value: the precession angle in degrees
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.precession_angle={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -418,10 +640,21 @@ class SignalModel(QObject):
 
     @property
     def precession_frequency(self):
+        """
+        Return the precession frequency metadata
+        :return: the precession frequency in Hz
+        :rtype: float
+        """
         return self._precession_frequency
 
     @precession_frequency.setter
     def precession_frequency(self, value):
+        """
+        Set the precession frequency metadata
+        :param value: the precession frequency in Hz
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.precession_frequency={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -438,10 +671,21 @@ class SignalModel(QObject):
 
     @property
     def exposure_time(self):
+        """
+        Return the exposure time of the dataset frames
+        :return: exposure time in ms
+        :rtype: float
+        """
         return self._exposure_time
 
     @exposure_time.setter
     def exposure_time(self, value):
+        """
+        Set the exposure time of the dataset frames
+        :param value: exposure time in ms
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.exposure_time={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -458,10 +702,26 @@ class SignalModel(QObject):
 
     @property
     def scan_rotation(self):
+        """
+        Return the scan rotation metadata of the dataset
+        :return: scan rotation in degrees
+        :rtype: float
+        """
         return self._scan_rotation
 
     @scan_rotation.setter
     def scan_rotation(self, value):
+        """
+        Set the scan rotation metadata of the dataset.
+
+        This should be the rotation used in the scan software, NOT the misorientation between the scan coordinates and the detector coordinates.
+
+        This does not rotate any part of the data, it is only used as metadata.
+
+        :param value: scan rotation in degrees.
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.scan_rotation={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -478,10 +738,22 @@ class SignalModel(QObject):
 
     @property
     def convergence_angle(self):
+        """
+        Return the convergence semi-angle metadata of the dataset.
+
+        :return: convergence semi-angle in mrad
+        :rtype: float
+        """
         return self._convergence_angle
 
     @convergence_angle.setter
     def convergence_angle(self, value):
+        """
+        Set the convergence semi-angle metadata of the dataset
+        :param value: convergence semi-angle in mrad
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.convergence_angle={value!r}')
         if isinstance(value, (int, float)):
             value = float(value)
@@ -498,10 +770,21 @@ class SignalModel(QObject):
 
     @property
     def operator(self):
+        """
+        Return the operator metadata.
+        :return: operator metadata string
+        :rtype: str
+        """
         return self._operator
 
     @operator.setter
     def operator(self, value):
+        """
+        Set the operator metadata.
+        :param value: operator name
+        :type value: str
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.operator={value!r}')
         if isinstance(value, str):
             self._operator = value
@@ -512,10 +795,21 @@ class SignalModel(QObject):
 
     @property
     def specimen(self):
+        """
+        Return the specimen metadata string
+        :return: specimen name/label
+        :rtype: str
+        """
         return self._specimen
 
     @specimen.setter
     def specimen(self, value):
+        """
+        Set the specimen metadata string
+        :param value: specimen name/label
+        :type value: str
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.specimen={value!r}')
         if isinstance(value, str):
             self._specimen = value
@@ -526,10 +820,21 @@ class SignalModel(QObject):
 
     @property
     def notes(self):
+        """
+        Return the notes metadata string
+        :return: experimental notes
+        :rtype: str
+        """
         return self._notes
 
     @notes.setter
     def notes(self, value):
+        """
+        Set the notes metadata string
+        :param value: experimental notes
+        :type value: str
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.notes={value!r}')
         if isinstance(value, str):
             self._notes = value
@@ -540,10 +845,21 @@ class SignalModel(QObject):
 
     @property
     def date(self):
+        """
+        Return the date metadata of the experiment
+        :return: the date of the experiment
+        :rtype: datetime.date
+        """
         return self._date
 
     @date.setter
     def date(self, value):
+        """
+        Set the date metadata of the experiment
+        :param value: the date of the experiment
+        :type value: Union[str, datetime.date, QDate]
+        :return:
+        """
         logger.debug(f'Setting {self.__class__.__name__}.date={value!r}')
         if isinstance(value, str):
             self._date = date.fromisoformat(value)
@@ -556,14 +872,26 @@ class SignalModel(QObject):
         elif isinstance(value, QDate):
             self._date = date(value.year(), value.month(), value.day())
         else:
-            raise TypeError(f'Cannot set date to {value} for {self.signal}. Only strings and datetime.date objects are accepted')
+            raise TypeError(
+                f'Cannot set date to {value} for {self.signal}. Only strings and datetime.date objects are accepted')
 
     @property
     def stage_x(self):
+        """
+        Return the stage x-position metadata
+        :return: stage x-position in microns
+        :rtype: float
+        """
         return self._stage_x
 
     @stage_x.setter
     def stage_x(self, value):
+        """
+        Set the stage x-position metadata
+        :param value: stage x-position in microns
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.stage_x={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
             self._stage_x = float(value)
@@ -575,10 +903,21 @@ class SignalModel(QObject):
 
     @property
     def stage_y(self):
+        """
+        Return the stage y-position metadata
+        :return: stage y-position in microns
+        :rtype: float
+        """
         return self._stage_y
 
     @stage_y.setter
     def stage_y(self, value):
+        """
+        Set the stage y-position metadata
+        :param value: stage y-position in microns
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.stage_y={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
             self._stage_y = float(value)
@@ -590,10 +929,21 @@ class SignalModel(QObject):
 
     @property
     def stage_z(self):
+        """
+        Return the stage z-position metadata
+        :return: stage z-position in microns
+        :rtype: float
+        """
         return self._stage_z
 
     @stage_z.setter
     def stage_z(self, value):
+        """
+        Set the stage z-position metadata
+        :param value: stage z-position in microns
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.stage_z={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
             self._stage_z = float(value)
@@ -605,10 +955,21 @@ class SignalModel(QObject):
 
     @property
     def stage_alpha(self):
+        """
+        Return the stage alpha tilt metadata
+        :return: stage alpha tilt in degrees
+        :rtype: float
+        """
         return self._stage_alpha
 
     @stage_alpha.setter
     def stage_alpha(self, value):
+        """
+        Set the stage alpha tilt metadata
+        :param value: stage alpha tilt in degrees
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.stage_alpha={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
             self._stage_alpha = float(value)
@@ -620,10 +981,24 @@ class SignalModel(QObject):
 
     @property
     def stage_beta(self):
+        """
+        Return the stage beta tilt metadata.
+
+        Corresponds to the rotation of a rotation holder.
+
+        :return: stage beta tilt in degrees
+        :rtype: float
+        """
         return self._stage_beta
 
     @stage_beta.setter
     def stage_beta(self, value):
+        """
+        Set the stage beta tilt metadata
+        :param value: stage beta tilt in degrees
+        :type value: Union[int, float]
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.stage_beta={value!r}')
         if isinstance(value, (int, float)) or isnan(value):
             self._stage_beta = float(value)
@@ -635,10 +1010,21 @@ class SignalModel(QObject):
 
     @property
     def stage(self):
+        """
+        Return the stage name metadata
+        :return: stage name
+        :rtype: str
+        """
         return self._stage
 
     @stage.setter
     def stage(self, value):
+        """
+        Set the stage name metadata
+        :param value: stage name
+        :type value: str
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.stage={value!r}')
         if isinstance(value, str):
             self._stage = value
@@ -650,10 +1036,21 @@ class SignalModel(QObject):
 
     @property
     def mode(self):
+        """
+        Return the mode of the microscope
+        :return: mode
+        :rtype: str
+        """
         return self._mode
 
     @mode.setter
     def mode(self, value):
+        """
+        Set the mode of the microscope
+        :param value: mode
+        :type value: str
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.mode={value!r}')
         if isinstance(value, str):
             self._mode = value
@@ -664,10 +1061,24 @@ class SignalModel(QObject):
 
     @property
     def alpha(self):
+        """
+        Return the alpha-setting of the microscope
+        :return: alpha-setting
+        :rtype: int
+        """
         return self._alpha
 
     @alpha.setter
     def alpha(self, value):
+        """
+        Set the alpha-setting of the microscope
+
+        The alpha-setting corresponds to the condenser mini-lens power setting on JEOL microscopes.
+
+        :param value: alpha-setting
+        :type value: int
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.alpha={value!r}')
         if isinstance(value, int):
             self._alpha = value
@@ -678,10 +1089,21 @@ class SignalModel(QObject):
 
     @property
     def spot(self):
+        """
+        Return the spot-setting of the microscope
+        :return: spot setting
+        :rtype: int
+        """
         return self._spot
 
     @spot.setter
     def spot(self, value):
+        """
+        Set the spot-setting of the microscope.
+        :param value: spot setting
+        :type value: int
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.spot={value!r}')
         if isinstance(value, int):
             self._spot = value
@@ -692,10 +1114,22 @@ class SignalModel(QObject):
 
     @property
     def spotsize(self):
+        """
+        Return the spotsize setting of the microscope
+        :return: nominal spotsize setting in nm
+        :rtype: float
+        """
         return self._spotsize
 
     @spotsize.setter
     def spotsize(self, value):
+        """
+        Set the spotsize setting of the microscope
+
+        :param value: spotsize in nm
+        :type value: float
+        :return: None
+        """
         logger.debug(f'Setting {self.__class__.__name__}.spotsize={value!r}')
         if isinstance(value, float) or isnan(value):
             self._spotsize = value
@@ -705,6 +1139,12 @@ class SignalModel(QObject):
             raise TypeError(f'Cannot set spotsize to {value} for {self.signal}. Only floats are accepted')
 
     def __init__(self, *args, **kwargs):
+        """
+        Create a model for handling signal conversion.
+
+        :param args: optional positional arguments passed to QObject init
+        :param kwargs: Optional keyword argument spassed to QObject init
+        """
         super(SignalModel, self).__init__(*args, **kwargs)
 
         self._signal = None
@@ -763,7 +1203,8 @@ class SignalModel(QObject):
         self.step_size_x = self.default_step_size[0]
         self.step_size_y = self.default_step_size[1]
         self.axes_names = self.default_axes_names
-        self.axes_units = (self.default_scan_units, self.default_scan_units, self.default_diffraction_units,  self.default_diffraction_units)
+        self.axes_units = (self.default_scan_units, self.default_scan_units, self.default_diffraction_units,
+                           self.default_diffraction_units)
 
         # Metadata parameters
         self.beam_energy = self.default_beam_energy
@@ -823,24 +1264,35 @@ class SignalModel(QObject):
         ])
         return f'{self.__class__.__name__}:\n\t{s}'
 
-class SignalController(QObject):
 
+class SignalController(QObject):
+    """
+    Controller object for signal conversion
+    """
     _cameralengths = {200:
-                          {
-                              8: 16.20,
-                              10: 19.64,
-                              12: 22.95,
-                              15: 28.16,
-                              20: 36.14,
-                              25: 44.75,
-                              30: 53.44,
-                              40: 70.33,
-                              50: 88.71,
-                              60: 107.28,
-                              80: 140.66
-                          }}
+        {
+            8: 16.20,
+            10: 19.64,
+            12: 22.95,
+            15: 28.16,
+            20: 36.14,
+            25: 44.75,
+            30: 53.44,
+            40: 70.33,
+            50: 88.71,
+            60: 107.28,
+            80: 140.66
+        }}
 
     def __init__(self, model, *args, **kwargs):
+        """
+        Create a controller object for controling signal conversion through a GUI
+
+        :param model: The conversion model object to control
+        :type model: SignalModel
+        :param args: Optional positional arguments passed to QObject init
+        :param kwargs: Optional keyword arguments passed to QObject init
+        """
         super(SignalController, self).__init__(*args, **kwargs)
         if not isinstance(model, SignalModel):
             raise TypeError(
@@ -849,30 +1301,74 @@ class SignalController(QObject):
 
     @pyqtSlot(tuple)
     def setShape(self, value):
+        """
+        Set the shape to use when converting the model data stack
+        :param value: the shape
+        :type value: tuple
+        :return:
+        """
         self._model.shape = value
 
     @pyqtSlot(int)
     def setNX(self, value):
+        """
+        Set the number of scan pixels along x-scan direction
+        :param value: pixels in x-direction
+        :type value: int
+        :return:
+        """
         self._model.nx = value
 
     @pyqtSlot(int)
     def setNY(self, value):
+        """
+        Set the number of scan pixels along y-scan direction
+        :param value: pixels in y-direction
+        :type value: int
+        :return:
+        """
         self._model.ny = value
 
     @pyqtSlot(int)
     def setNdX(self, value):
+        """
+        Set the number of pixels along kx-direction of detector
+        :param value: pixels in kx-direction
+        :type value: int
+        :return:
+        """
         self._model.ndx = value
 
     @pyqtSlot(int)
     def setNdY(self, value):
+        """
+        Set the number of pixels along ky-direction of detector
+        :param value: pixels in ky-direction
+        :type value: int
+        :return:
+        """
         self._model.ndy = value
 
     @pyqtSlot(tuple)
     def setChunks(self, value):
+        """
+        Set the chunks to use when rechunking the data during conversion.
+        :param value: the chunks to use for each dimension of the dataset
+        :type value: tuple
+        :return:
+        """
         self._model.chunks = value
 
     @pyqtSlot(int, int)
     def setChunk(self, ax, value):
+        """
+        Set the number of chunks to use for a specific axis when rechunking the data during conversion.
+        :param ax: The axis that the chunking applies to
+        :param value: The number of chunks to use
+        :type ax: int
+        :type value: int
+        :return:
+        """
         if 0 <= ax <= 3:
             chunks = list(self._model.chunks)
             chunks[ax] = value
@@ -884,16 +1380,38 @@ class SignalController(QObject):
     @pyqtSlot(pxm.signals.ElectronDiffraction2D)
     @pyqtSlot(pxm.signals.LazyElectronDiffraction2D)
     def setSignal(self, value):
+        """
+        Set the dataset to convert
+        :param value: the dataset signal
+        :type value: Union[pxm.signals.ElectronDiffraction2D, pxm.signals.LazyElectronDiffraction2D]
+        :return:
+        """
         self._model.signal = value
 
     @pyqtSlot(str)
     @pyqtSlot(Path)
     def setPath(self, value):
+        """
+        Set the path to the dataset to convert from/to.
+
+        This path will also be used to write the converted signals to, with a different suffix.
+        :param value: path to raw .mib dataset.
+        :type value: Union[str, Path]
+        :return:
+        """
         self._model.path = value
 
     @pyqtSlot(list, bool)
     @pyqtSlot(list, bool)
     def saveSignal(self, extensions, overwrite):
+        """
+        Convert and save the dataset
+        :param extensions: the file types to convert to given as a list of strings
+        :param overwrite: whether to overwrite existing files or not
+        :type extensions: list
+        :type overwrite: bool
+        :return:
+        """
         logger.info(f'Converting signal {self._model.signal} to [{", ".join(extensions)}]')
         try:
             if self._model.signal is None:
@@ -925,7 +1443,8 @@ class SignalController(QObject):
                     # Add metadata
                     logger.debug(f'Adding {self._model.metadata.as_dictionary()} as metadata to new signal')
                     s.metadata.add_dictionary(self._model.metadata.as_dictionary())
-                    logger.debug(f'Adding {self._model.original_metadata.as_dictionary()} as original metadata to new signal')
+                    logger.debug(
+                        f'Adding {self._model.original_metadata.as_dictionary()} as original metadata to new signal')
                     s.original_metadata.add_dictionary(self._model.signal.original_metadata.as_dictionary())
 
                     # Loop through extensions and save the signal
@@ -951,12 +1470,22 @@ class SignalController(QObject):
 
     @pyqtSlot()
     def reset(self):
+        """
+        Reset the model being controlled by the controller.
+        :return:
+        """
         logger.debug('Resetting data')
         self._model.signal = None
         self._model.set_defaults()
 
     @pyqtSlot()
     def readSignal(self):
+        """
+        Load the signal.
+
+        Loads the .mib signal (and .hdr file) corresponding to the current path.
+        :return:
+        """
         try:
             logger.debug(f'Reading signal {self._model.path.absolute()}')
             self._model.signal = pxm.load_mib(str(self._model.path))
@@ -973,7 +1502,8 @@ class SignalController(QObject):
                 except KeyError as e:
                     logger.debug(f'Could not extract date from header!', exc_info=True)
             except FileNotFoundError as e:
-                logger.info(f'Cannot read .hdr data for {self._model.path.absolute()}:\n{e}\nIgnoring error and continuing.')
+                logger.info(
+                    f'Cannot read .hdr data for {self._model.path.absolute()}:\n{e}\nIgnoring error and continuing.')
             else:
                 self._model.signal.metadata.add_dictionary({'HDR': header})
                 self._model.signal.original_metadata.add_dictionary({'HDR': header})
@@ -982,46 +1512,116 @@ class SignalController(QObject):
 
     @pyqtSlot(float)
     def setCameralength(self, value):
+        """
+        Set the cameralength of the model.
+
+        :param value: cameralength
+        :type value: float
+        :return:
+        """
         self._model.cameralength = value
 
     @pyqtSlot(float)
     def setBeamEnergy(self, value):
+        """
+        Set the beam energy of the model
+        :param value: beam energy
+        :type value: float
+        :return:
+        """
         self._model.beam_energy = value
 
     @pyqtSlot(float)
     def setPrecessionAngle(self, value):
+        """
+        Set the precession angle of the model
+        :param value: precession angle
+        :type value: float
+        :return:
+        """
         self._model.precession_angle = value
 
     @pyqtSlot(float)
     def setPrecessionFrequency(self, value):
+        """
+        Set the precession frequency of the model
+        :param value: precession frequency
+        :type value: float
+        :return:
+        """
         self._model.precession_frequency = value
 
     @pyqtSlot(float)
     def setConvergenceAngle(self, value):
+        """
+        Set the convergence semi-angle of the model
+        :param value: convergence semi-angle
+        :type value: float
+        :return:
+        """
         self._model.convergence_angle = value
 
     @pyqtSlot(float)
     def setExposureTime(self, value):
+        """
+        Set the exposure time of the scan frames
+        :param value: exposure time
+        :type value: float
+        :return:
+        """
         self._model.exposure_time = value
 
     @pyqtSlot(str)
     def setMode(self, value):
+        """
+        Set the mode setting of the microscope
+        :param value: the mode setting
+        :type value: str
+        :return:
+        """
         self._model.mode = value
 
     @pyqtSlot(int)
     def setAlpha(self, value):
+        """
+        Set the alpha setting of the microscope
+        :param value: the alpha setting
+        :type value: int
+        :return:
+        """
         self._model.alpha = value
 
     @pyqtSlot(str)
     def setOperator(self, value):
+        """
+        Set the operator metadata
+        :param value: the operator name
+        :type value: str
+        :return:
+        """
         self._model.operator = value
 
     @pyqtSlot(str)
     def setSpecimen(self, value):
+        """
+        Set the specimen name/label
+        :param value: the specimen name/label
+        :type value: str
+        :return:
+        """
         self._model.specimen = value
 
     @pyqtSlot(str)
     def setNotes(self, value):
+        """
+        Set the notes metadata of the model.
+
+        This will only change the notes if the new notes are different from the old notes.
+
+        :param value: the notes
+        :type value: str
+        :return:
+        """
         if value != self._model.notes:
             self._model.notes = value
         else:
@@ -1029,75 +1629,178 @@ class SignalController(QObject):
 
     @pyqtSlot(float)
     def setStageX(self, value):
+        """
+        Set the stage metadata x-position
+        :param value: x-position
+        :type value: float
+        :return:
+        """
         self._model.stage_x = value
 
     @pyqtSlot(float)
     def setStageY(self, value):
+        """
+        Set the stage metadata y-position
+        :param value: y-position
+        :type value: float
+        :return:
+        """
         self._model.stage_y = value
 
     @pyqtSlot(float)
     def setStageZ(self, value):
+        """
+        Set the stage metadata z-position
+        :param value: z-position
+        :type value: float
+        :return:
+        """
         self._model.stage_z = value
 
     @pyqtSlot(float)
     def setStageAlpha(self, value):
+        """
+        Set the stage metadata alpha tilt
+        :param value: alpha tilt
+        :type value: float
+        :return:
+        """
         self._model.stage_alpha = value
 
     @pyqtSlot(float)
     def setStageBeta(self, value):
+        """
+        Set the stage metadata beta tilt
+        :param value: beta tilt
+        :type value: float
+        :return:
+        """
         self._model.stage_beta = value
 
     @pyqtSlot(str)
     def setStage(self, value):
+        """
+        Set the stage name metadata
+        :param value: name
+        :type value: str
+        :return:
+        """
         self._model.stage = value
 
     @pyqtSlot(float)
     def setSpotsize(self, value):
+        """
+        Set the nominal spotsize metadata
+        :param value: nominal spotsize
+        :type value: float
+        :return:
+        """
         self._model.spotsize = value
 
     @pyqtSlot(int)
     def setSpot(self, value):
+        """
+        Set the spot setting of the microscope
+        :param value: spot-setting
+        :type value: int
+        :return:
+        """
         self._model.spot = value
 
     @pyqtSlot(QDate)
     def setDate(self, value):
+        """
+        Set the date of the experiment
+        :param value: the data of the experiment
+        :type value: QDate
+        :return:
+        """
         self._model.date = value
 
     @pyqtSlot(float)
     def setScanRotation(self, value):
+        """
+        Set the scan rotation.
+
+        This should be the rotation used in the scan software, NOT the misorientation between the scan coordinates and the detector coordinates.
+        :param value: scan rotation
+        :type value: float
+        :return:
+        """
         self._model.scan_rotation = value
 
     @pyqtSlot(float)
     def setStepSizeX(self, value):
+        """
+        Set the scan step size in the x-direction of the scan
+        :param value: scan x-step size
+        :type value: float
+        :return:
+        """
         self._model.step_size_x = value
 
     @pyqtSlot(str)
     def setStepUnitX(self, value):
-        self._model.axes_units = (value, self._model.axes_units[1], self._model.axes_units[2], self._model.axes_units[3])
+        """
+        Set the unit of the step size in the x-direction of the scan
+
+        :param value: step size unit
+        :type value: str
+        :return:
+        """
+        self._model.axes_units = (
+            value, self._model.axes_units[1], self._model.axes_units[2], self._model.axes_units[3])
 
     @pyqtSlot(float)
     def setStepSizeY(self, value):
+        """
+        Set the scan step size in the y-direction of the scan
+        :param value: scan y-step size
+        :type value: float
+        :return:
+        """
         self._model.step_size_y = value
 
     @pyqtSlot(str)
     def setStepUnitY(self, value):
+        """
+        Set the unit of the step size in the y-direction of the scan
+
+        :param value: step size unit
+        :type value: str
+        :return:
+        """
         self._model.axes_units = (
-        self._model.axes_units[0], value, self._model.axes_units[2], self._model.axes_units[3])
+            self._model.axes_units[0], value, self._model.axes_units[2], self._model.axes_units[3])
 
     @pyqtSlot(float, float)
     def setStepSize(self, value_x, value_y):
+        """
+        Set the step sizes of the 2D scan.
+
+        Using this to set the step sizes will not emit any signals from the model. (Why?)
+
+        :param value_x: the scan step size along x
+        :param value_y: the scan step size along y
+        :type value_x: float
+        :type value_y: float
+        :return:
+        """
         if self._model.silent:
             self.setStepSizeX(value_x)
             self.setStepSizeY(value_y)
         else:
             self._model.silent = True
-            self.setScanStepSizeX(value_x)
-            self.setScanStepSizeY(value_y)
+            self.setStepSizeX(value_x)
+            self.setStepSizeY(value_y)
             self._model.silent = False
-
 
     @pyqtSlot()
     def calibrateCameralength(self):
+        """
+        Calibrate the cameralength based on controller cameralength dictionary
+        :return:
+        """
         logger.debug(f'Calibration cameralength from {self._model.cameralength} cm at {self._model.beam_energy} kV')
         try:
             actual_cameralength = self._cameralengths[self._model.beam_energy][self._model.cameralength]
@@ -1109,6 +1812,10 @@ class SignalController(QObject):
 
     @pyqtSlot()
     def printSelf(self):
+        """
+        Print the model
+        :return:
+        """
         logger.info(str(self._model))
 
     def apply_metadata_fields(self):
@@ -1187,7 +1894,9 @@ class SignalController(QObject):
         except ZeroDivisionError as e:
             dx = 1.0
             unit_x = 'px'
-            logger.debug(f'Could not calculate diffraction scale for x-direction. Proceeding using non-calibrated scale {dx} {unit_x}', exc_info=True)
+            logger.debug(
+                f'Could not calculate diffraction scale for x-direction. Proceeding using non-calibrated scale {dx} {unit_x}',
+                exc_info=True)
 
         else:
             unit_x = self._model.axes_units[-2]
@@ -1280,7 +1989,8 @@ class SignalController(QObject):
         offsets = [0., 0., 0., 0.]
 
         for ax_no, (name, scale, offset, unit) in enumerate(zip(self._model.axes_names, scales, offsets, units)):
-            logger.debug(f'Setting axis parameters for axis number {ax_no}: \n{tabulate([[name, scale, offset, unit]], headers=("name", "scale", "offset", "units"))}')
+            logger.debug(
+                f'Setting axis parameters for axis number {ax_no}: \n{tabulate([[name, scale, offset, unit]], headers=("name", "scale", "offset", "units"))}')
             blo_signal.axes_manager[ax_no].name = name
             blo_signal.axes_manager[ax_no].scale = scale
             blo_signal.axes_manager[ax_no].offset = offset
@@ -1290,11 +2000,24 @@ class SignalController(QObject):
 
 
 class SignalModelView(QtWidgets.QWidget):
+    """
+    Object to view and control the conversion of a .mib signal
+    """
 
     default_stage_names = ('EM31640-2x', 'EM31680-2x', 'DENS wildfire')
     conversion_formats = ('.hspy', '.zarr', '.blo')
 
     def __init__(self, controller, model, *args, **kwargs):
+        """
+        Create a view with widgets for the controller and model used to convert .mib signals.
+
+        :param controller: The controller to interact with
+        :param model: The model to control through the controller
+        :type controller: SignalController
+        :type model: SignalModel
+        :param args: Optional positional arguments passed to QtWidgets.QWidget()
+        :param kwargs: Optional keyword arguments passed to QtWidgets.QWidget()
+        """
         super(SignalModelView, self).__init__(*args, **kwargs)
 
         if not isinstance(controller, SignalController):
@@ -1309,7 +2032,7 @@ class SignalModelView(QtWidgets.QWidget):
 
         self.setLayout(QtWidgets.QVBoxLayout())
 
-        #File info
+        # File info
         self._file_info_widget = QtWidgets.QGroupBox('File')
         self._file_info_widget.setLayout(QtWidgets.QVBoxLayout())
         self.layout().addWidget(self._file_info_widget)
@@ -1333,7 +2056,7 @@ class SignalModelView(QtWidgets.QWidget):
         self._file_info_widget.layout().addWidget(self._file_details_widget)
         self._model.signalChanged.connect(self.on_signal_changed)
 
-        #main widgets
+        # main widgets
         self._main_widgets = QtWidgets.QWidget()
         self._main_widgets.setLayout(QtWidgets.QHBoxLayout())
         self.layout().addWidget(self._main_widgets)
@@ -1366,7 +2089,7 @@ class SignalModelView(QtWidgets.QWidget):
         ### Add spacer
         self._structure_widgets.layout().addStretch()
 
-        #WIP
+        # WIP
 
         ## Metadata widgets
         self._metadata_widgets = QtWidgets.QGroupBox('Metadata')
@@ -1414,7 +2137,7 @@ class SignalModelView(QtWidgets.QWidget):
         self._exposure_time_widget = QtWidgets.QDoubleSpinBox()
         self.setup_acquisition_metadata_widgets()
 
-        #Conversion widgets
+        # Conversion widgets
         self._conversion_widget = QtWidgets.QGroupBox('Conversion')
         self._conversion_widget.setLayout(QtWidgets.QHBoxLayout())
         self._extensions_widget = QtWidgets.QGroupBox('Output formats')
@@ -1424,12 +2147,12 @@ class SignalModelView(QtWidgets.QWidget):
         self.layout().addWidget(self._conversion_widget)
         self.setup_conversion_widgets()
 
-        #Print widget
+        # Print widget
         self._print_button = QtWidgets.QPushButton('Print')
         self.layout().addWidget(self._print_button)
         self._print_button.clicked.connect(self._controller.printSelf)
 
-        #Listen for changes in model and update widgets
+        # Listen for changes in model and update widgets
         self._model.pathChanged[str].connect(self.on_path_changed)
         self._model.signalChanged.connect(self.on_signal_changed)
         self._model.shapeChanged[tuple].connect(self.on_shape_changed)
@@ -1456,22 +2179,35 @@ class SignalModelView(QtWidgets.QWidget):
         self._model.stepSizeChanged[float, float].connect(self.on_step_size_changed)
         self._model.axesUnitsChanged[str, str, str, str].connect(self.on_axes_units_changed)
 
-
     def setup_file_io_widgets(self):
+        """
+        Setup the file io widgets
+        :return:
+        """
         self._file_io_widget.layout().addWidget(self._path_widget)
         self._file_io_widget.layout().addWidget(self._load_button)
         self._file_io_widget.layout().addWidget(self._browse_button)
 
-        self._path_widget.returnPressed.connect(lambda: self.set_path(self._path_widget.text()))#lambda: self.set_path(self._path_widget.text()))
+        self._path_widget.returnPressed.connect(
+            lambda: self.set_path(self._path_widget.text()))  # lambda: self.set_path(self._path_widget.text()))
         self._load_button.clicked.connect(self._controller.readSignal)
         self._browse_button.clicked.connect(lambda: self.set_path(self.browseInputFile()))
 
     def setup_info_widgets(self):
+        """
+        Setup the signal info widgets
+        :return:
+        """
         self._info_widget.layout().addWidget(self._signal_widget)
-        self._signal_widget.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Minimum))
+        self._signal_widget.setSizePolicy(
+            QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Minimum))
         self._signal_widget.setText(str(self._model.signal))
 
     def setup_shape_widgets(self):
+        """
+        Setup the shape control widgets
+        :return:
+        """
         self._shape_widget.layout().addWidget(QtWidgets.QLabel('x'), 0, 0)
         self._shape_widget.layout().addWidget(QtWidgets.QLabel('y'), 1, 0)
         self._shape_widget.layout().addWidget(QtWidgets.QLabel('dx'), 2, 0)
@@ -1505,6 +2241,10 @@ class SignalModelView(QtWidgets.QWidget):
         self._shape_widget.layout().addWidget(self._ndy_spinbox, 3, 1)
 
     def setup_chunk_widgets(self):
+        """
+        Setup the chunk control widgets
+        :return:
+        """
         self._chunk_widget.layout().addWidget(QtWidgets.QLabel('x'), 0, 0)
         self._chunk_widget.layout().addWidget(QtWidgets.QLabel('y'), 1, 0)
         self._chunk_widget.layout().addWidget(QtWidgets.QLabel('dx'), 2, 0)
@@ -1535,6 +2275,10 @@ class SignalModelView(QtWidgets.QWidget):
         self._dy_chunk_spinbox.valueChanged.connect(lambda x: self._controller.setChunk(3, x))
 
     def setup_conversion_widgets(self):
+        """
+        Setup the converstion widgets
+        :return:
+        """
         self._extensions_widget.layout().addWidget(QtWidgets.QCheckBox('.hspy'))
         self._extensions_widget.layout().addWidget(QtWidgets.QCheckBox('.zarr'))
         self._extensions_widget.layout().addWidget(QtWidgets.QCheckBox('.blo'))
@@ -1546,8 +2290,11 @@ class SignalModelView(QtWidgets.QWidget):
         self._conversion_widget.layout().addStretch()
         self._convert_button.clicked.connect(self.on_convert_button_clicked)
 
-
     def setup_aux_metadata_widgets(self):
+        """
+        Setup the auxillary metadata widgets
+        :return:
+        """
         self._aux_metadata_widgets.layout().addWidget(QtWidgets.QLabel('Operator:'), 0, 0)
         self._aux_metadata_widgets.layout().addWidget(QtWidgets.QLabel('Specimen:'), 1, 0)
         self._aux_metadata_widgets.layout().addWidget(QtWidgets.QLabel('Stage:'), 2, 0)
@@ -1566,6 +2313,10 @@ class SignalModelView(QtWidgets.QWidget):
         self._date_widget.dateChanged[QDate].connect(self._controller.setDate)
 
     def setup_stage_widgets(self):
+        """
+        Setup the stage widgets
+        :return:
+        """
         self._stage_widgets.layout().addWidget(QtWidgets.QLabel('x [um]'), 0, 0)
         self._stage_widgets.layout().addWidget(QtWidgets.QLabel('y [um]'), 0, 1)
         self._stage_widgets.layout().addWidget(QtWidgets.QLabel('z [um]'), 0, 2)
@@ -1579,13 +2330,15 @@ class SignalModelView(QtWidgets.QWidget):
         self._stage_widgets.layout().addWidget(self._stage_beta_widget, 1, 4)
         self._stage_widgets.layout().addWidget(self._stage_name_widget, 1, 5)
 
-        for widget in [self._stage_x_widget, self._stage_y_widget, self._stage_z_widget, self._stage_alpha_widget, self._stage_beta_widget]:
+        for widget in [self._stage_x_widget, self._stage_y_widget, self._stage_z_widget, self._stage_alpha_widget,
+                       self._stage_beta_widget]:
             widget.setMinimum(-9999)
             widget.setMaximum(9999)
             widget.setDecimals(2)
             widget.setSingleStep(0.01)
         self._stage_name_widget.addItems(self.default_stage_names)
-        if self._model.stage not in [self._stage_name_widget.itemText(idx) for idx in range(self._stage_name_widget.count())]:
+        if self._model.stage not in [self._stage_name_widget.itemText(idx) for idx in
+                                     range(self._stage_name_widget.count())]:
             self._stage_name_widget.addItem(self._model.stage)
         self._stage_name_widget.setCurrentText(self._model.stage)
 
@@ -1603,6 +2356,10 @@ class SignalModelView(QtWidgets.QWidget):
         self._stage_name_widget.currentTextChanged[str].connect(self._controller.setStage)
 
     def setup_acquisition_metadata_widgets(self):
+        """
+        Setup the acquisition metadata widgets
+        :return:
+        """
         self._beam_energy_widget.setMinimum(0)
         self._beam_energy_widget.setMaximum(999)
         self._beam_energy_widget.setDecimals(0)
@@ -1676,7 +2433,7 @@ class SignalModelView(QtWidgets.QWidget):
         self._convergence_angle_widget.setSuffix(' mrad')
         self._convergence_angle_widget.setValue(self._model.convergence_angle)
         self._convergence_angle_widget.valueChanged[float].connect(self._controller.setConvergenceAngle)
-        
+
         self._scan_step_size_x_widget.setMinimum(0)
         self._scan_step_size_x_widget.setMaximum(999)
         self._scan_step_size_x_widget.setDecimals(3)
@@ -1694,13 +2451,15 @@ class SignalModelView(QtWidgets.QWidget):
         self._scan_step_size_y_widget.valueChanged[float].connect(self._controller.setStepSizeY)
 
         self._scan_step_unit_x_widget.addItems(['px', 'nm', 'um'])
-        if self._model.axes_units[0] not in [self._scan_step_unit_x_widget.itemText(idx) for idx in range(self._scan_step_unit_x_widget.count())]:
+        if self._model.axes_units[0] not in [self._scan_step_unit_x_widget.itemText(idx) for idx in
+                                             range(self._scan_step_unit_x_widget.count())]:
             self._scan_step_unit_x_widget.addItem(self._model.axes_units[0])
         self._scan_step_unit_x_widget.setCurrentText(self._model.axes_units[0])
         self._scan_step_unit_x_widget.currentTextChanged[str].connect(self._controller.setStepUnitX)
 
         self._scan_step_unit_y_widget.addItems(['px', 'nm', 'um'])
-        if self._model.axes_units[1] not in [self._scan_step_unit_y_widget.itemText(idx) for idx in range(self._scan_step_unit_y_widget.count())]:
+        if self._model.axes_units[1] not in [self._scan_step_unit_y_widget.itemText(idx) for idx in
+                                             range(self._scan_step_unit_y_widget.count())]:
             self._scan_step_unit_y_widget.addItem(self._model.axes_units[1])
         self._scan_step_unit_y_widget.setCurrentText(self._model.axes_units[1])
         self._scan_step_unit_y_widget.currentTextChanged[str].connect(self._controller.setStepUnitY)
@@ -1745,9 +2504,13 @@ class SignalModelView(QtWidgets.QWidget):
         self._acquisition_metadata_widgets.layout().addWidget(self._convergence_angle_widget, 11, 1)
         self._acquisition_metadata_widgets.layout().addWidget(self._exposure_time_widget, 12, 1)
 
-
     @pyqtSlot(tuple)
     def on_shape_changed(self, shape):
+        """
+        Update the shape widgets with new values
+        :param shape:
+        :return:
+        """
         self._nx_spinbox.blockSignals(True)
         self._ny_spinbox.blockSignals(True)
         self._ndx_spinbox.blockSignals(True)
@@ -1765,9 +2528,9 @@ class SignalModelView(QtWidgets.QWidget):
             color = 'lightblue'
         else:
             if self._model.signal.axes_manager[0].size == self._nx_spinbox.value() * self._ny_spinbox.value():
-                color='lightgreen'
+                color = 'lightgreen'
             else:
-                color='red'
+                color = 'red'
         logger.debug(f'Setting background colors of shape spin boxes to {color}')
         style_sheet_prefix = 'QSpinBox { background-color : '
         style_sheet_suffix = '; }'
@@ -1777,6 +2540,10 @@ class SignalModelView(QtWidgets.QWidget):
         self._ndy_spinbox.setStyleSheet(f'{style_sheet_prefix}{color}{style_sheet_suffix}')
 
     def on_signal_changed(self):
+        """
+        Update widgets to match current values in the model
+        :return:
+        """
         self._signal_widget.setText(str(self._model.signal))
         if self._model.signal is None:
             self._convert_button.setEnabled(False)
@@ -1795,6 +2562,10 @@ class SignalModelView(QtWidgets.QWidget):
             logger.debug(f'Cannot interpret number of frames {frames} as a square scan.')
 
     def on_chunks_changed(self):
+        """
+        Update the chunks to match the chunking in the model
+        :return:
+        """
         self._x_chunk_spinbox.blockSignals(True)
         self._y_chunk_spinbox.blockSignals(True)
         self._dx_chunk_spinbox.blockSignals(True)
@@ -1813,41 +2584,76 @@ class SignalModelView(QtWidgets.QWidget):
     @pyqtSlot(str)
     @pyqtSlot(Path)
     def on_path_changed(self, value):
+        """
+        Update the path widget with new a value
+        :param value:
+        :return:
+        """
         self._controller.readSignal()
         self._path_widget.setText(str(value))
 
     @pyqtSlot(float)
     def on_stage_x_changed(self, value):
+        """
+        Update the stage x widget with new a value
+        :param value:
+        :return:
+        """
         self._stage_x_widget.blockSignals(True)
         self._stage_x_widget.setValue(value)
         self._stage_x_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_stage_y_changed(self, value):
+        """
+        Update the stage y widget with new a value
+        :param value:
+        :return:
+        """
         self._stage_y_widget.blockSignals(True)
         self._stage_y_widget.setValue(value)
         self._stage_y_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_stage_z_changed(self, value):
+        """
+        Update the stage z widget with new a value
+        :param value:
+        :return:
+        """
         self._stage_z_widget.blockSignals(True)
         self._stage_z_widget.setValue(value)
         self._stage_z_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_stage_alpha_changed(self, value):
+        """
+        Update the stage alpha widget with new a value
+        :param value:
+        :return:
+        """
         self._stage_alpha_widget.blockSignals(True)
         self._stage_alpha_widget.setValue(value)
         self._stage_alpha_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_stage_beta_changed(self, value):
+        """
+        Update the stage beta widget with new a value
+        :param value:
+        :return:
+        """
         self._stage_beta_widget.blockSignals(True)
         self._stage_beta_widget.setValue(value)
         self._stage_beta_widget.blockSignals(False)
 
     @pyqtSlot(str)
     def on_stage_changed(self, value):
+        """
+        Update the stage name widget with new content
+        :param value:
+        :return:
+        """
         self._stage_name_widget.blockSignals(True)
         if value not in [self._stage_name_widget.itemText(idx) for idx in range(self._stage_name_widget.count())]:
             self._stage_name_widget.addItem(value)
@@ -1856,20 +2662,36 @@ class SignalModelView(QtWidgets.QWidget):
 
     @pyqtSlot(str)
     def on_operator_changed(self, value):
+        """
+        Update the operator name widget with new content
+        :param value:
+        :return:
+        """
         self._operator_widget.blockSignals(True)
         self._operator_widget.setText(value)
         self._operator_widget.blockSignals(False)
 
     @pyqtSlot(str)
     def on_specimen_changed(self, value):
+        """
+        Update the specimen widget with new content
+        :param value:
+        :return:
+        """
         self._specimen_widget.blockSignals(True)
         self._specimen_widget.setText(value)
         self._specimen_widget.blockSignals(False)
 
     @pyqtSlot(str)
     def on_notes_changed(self, value):
+        """
+        Update notes widget with new content
+        :param value:
+        :return:
+        """
         if value == self._notes_widget.toPlainText():
-            logger.debug(f'Text\n"{value}"\n already matches text in notes widget\n"{self._notes_widget.toPlainText()}"\n. Doing nothing.')
+            logger.debug(
+                f'Text\n"{value}"\n already matches text in notes widget\n"{self._notes_widget.toPlainText()}"\n. Doing nothing.')
         else:
             logger.debug(
                 f'Text\n"{value}"\n does not match text already in notes widget\n"{self._notes_widget.toPlainText()}"\n. Updating widget text contents without sending signals.')
@@ -1882,24 +2704,44 @@ class SignalModelView(QtWidgets.QWidget):
 
     @pyqtSlot(date)
     def on_date_changed(self, value):
+        """
+        Update the date widget to a new value
+        :param value:
+        :return:
+        """
         self._date_widget.blockSignals(True)
         self._date_widget.setDate(value)
         self._date_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_beam_energy_changed(self, value):
+        """
+        Update the beam energy widget to a new value
+        :param value:
+        :return:
+        """
         self._beam_energy_widget.blockSignals(True)
         self._beam_energy_widget.setValue(value)
         self._beam_energy_widget.blockSignals(False)
-    
+
     @pyqtSlot(float)
     def on_cameralength_changed(self, value):
+        """
+        Update the cameralength widget to a new value
+        :param value:
+        :return:
+        """
         self._cameralength_widget.blockSignals(True)
         self._cameralength_widget.setValue(value)
         self._cameralength_widget.blockSignals(False)
 
     @pyqtSlot(str)
     def on_mode_changed(self, value):
+        """
+        Update the mode widget to a new value
+        :param value:
+        :return:
+        """
         self._mode_widget.blockSignals(True)
         if value not in [self._mode_widget.itemText(idx) for idx in range(self._mode_widget.count())]:
             self._mode_widget.addItem(value)
@@ -1908,36 +2750,67 @@ class SignalModelView(QtWidgets.QWidget):
 
     @pyqtSlot(int)
     def on_alpha_changed(self, value):
+        """
+        Update the alpha widget to a new value
+        :param value:
+        :return:
+        """
         self._alpha_widget.blockSignals(True)
         self._alpha_widget.setValue(value)
         self._alpha_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_precession_angle_changed(self, value):
+        """
+        Update the precession angle widget to a new value
+        :param value:
+        :return:
+        """
         self._precession_angle_widget.blockSignals(True)
         self._precession_angle_widget.setValue(value)
         self._precession_angle_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_precession_frequency_changed(self, value):
+        """
+        Update the precession frequency widget to a new value
+        :param value:
+        :return:
+        """
         self._precession_frequency_widget.blockSignals(True)
         self._precession_frequency_widget.setValue(value)
         self._precession_frequency_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_spotsize_changed(self, value):
+        """
+        Update the spotsize widget to a new value
+        :param value:
+        :return:
+        """
         self._spotsize_widget.blockSignals(True)
         self._spotsize_widget.setValue(value)
         self._spotsize_widget.blockSignals(False)
 
     @pyqtSlot(int)
     def on_spot_changed(self, value):
+        """
+        Update the spot widget to a new value
+        :param value:
+        :return:
+        """
         self._spot_widget.blockSignals(True)
         self._spot_widget.setValue(value)
         self._spot_widget.blockSignals(False)
 
     @pyqtSlot(float, float)
     def on_step_size_changed(self, value_x, value_y):
+        """
+        Update the step size widgets to new values
+        :param value_x:
+        :param value_y:
+        :return:
+        """
         self._scan_step_size_x_widget.blockSignals(True)
         self._scan_step_size_y_widget.blockSignals(True)
         self._scan_step_size_x_widget.setValue(value_x)
@@ -1947,10 +2820,20 @@ class SignalModelView(QtWidgets.QWidget):
 
     @pyqtSlot(str, str, str, str)
     def on_axes_units_changed(self, units_x, units_y, units_kx, units_ky):
-        if units_x not in [self._scan_step_unit_x_widget.itemText(idx) for idx in range(self._scan_step_unit_x_widget.count())]:
+        """
+        Update the units widgets to new values
+        :param units_x:
+        :param units_y:
+        :param units_kx:
+        :param units_ky:
+        :return:
+        """
+        if units_x not in [self._scan_step_unit_x_widget.itemText(idx) for idx in
+                           range(self._scan_step_unit_x_widget.count())]:
             self._scan_step_unit_x_widget.addItem(units_x)
 
-        if units_y not in [self._scan_step_unit_y_widget.itemText(idx) for idx in range(self._scan_step_unit_x_widget.count())]:
+        if units_y not in [self._scan_step_unit_y_widget.itemText(idx) for idx in
+                           range(self._scan_step_unit_x_widget.count())]:
             self._scan_step_unit_y_widget.addItem(units_x)
 
         self._scan_step_unit_x_widget.setCurrentText(units_x)
@@ -1961,25 +2844,45 @@ class SignalModelView(QtWidgets.QWidget):
 
     @pyqtSlot(float)
     def on_scan_rotation_changed(self, value):
+        """
+        Update the scan rotation widgets to a new value
+        :param value:
+        :return:
+        """
         self._scan_rotation_widget.blockSignals(True)
         self._scan_rotation_widget.setValue(value)
         self._scan_rotation_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_exposure_time_changed(self, value):
+        """
+        Update the exposure time widget to a new value
+        :param value:
+        :return:
+        """
         self._exposure_time_widget.blockSignals(True)
         self._exposure_time_widget.setValue(value)
         self._exposure_time_widget.blockSignals(False)
 
     @pyqtSlot(float)
     def on_convergence_angle_changed(self, value):
+        """
+        Update the convergence angle widget to a new value
+        :param value:
+        :return:
+        """
         self._convergence_angle_widget.blockSignals(True)
         self._convergence_angle_widget.setValue(value)
         self._convergence_angle_widget.blockSignals(False)
 
     @pyqtSlot()
     def on_convert_button_clicked(self):
-        widgets = [self._extensions_widget.layout().itemAt(idx).widget() for idx in range(self._extensions_widget.layout().count())]
+        """
+        Start conversion
+        :return:
+        """
+        widgets = [self._extensions_widget.layout().itemAt(idx).widget() for idx in
+                   range(self._extensions_widget.layout().count())]
         logger.debug(f'Widgets: {widgets}')
         chkbox_widgets = [widget for widget in widgets if isinstance(widget, QtWidgets.QCheckBox)]
         logger.debug(f'Checkbox widgets: {chkbox_widgets}')
@@ -1990,6 +2893,13 @@ class SignalModelView(QtWidgets.QWidget):
         self._controller.saveSignal(extensions, self._overwrite_widget.isChecked())
 
     def set_path(self, path):
+        """
+        Attempt to set the path of the controller.
+
+        If any exception is raised during setting the path, the exception is logged, ignored, and the path widget is updated/reset to reflect actual path of the current signal
+        :param path:
+        :return:
+        """
         try:
             self._controller.setPath(path)
         except Exception as e:
@@ -1999,6 +2909,10 @@ class SignalModelView(QtWidgets.QWidget):
 
     @pyqtSlot(name='browseInputFile', result=str)
     def browseInputFile(self):
+        """
+        Browse for a filename through a dialog
+        :return:
+        """
         options = QtWidgets.QFileDialog.Options()
         fileName, _ = QtWidgets.QFileDialog.getOpenFileName(
             None,
@@ -2044,6 +2958,7 @@ def cameralength2scale(cameralength, beamenergy, pixelsize):
     """
     return abs(np.arctan(pixelsize / (cameralength * wavelength(beamenergy))))
 
+
 def load_hdr(filename):
     """load a header file"""
     filename = Path(filename)
@@ -2061,8 +2976,18 @@ def load_hdr(filename):
         raise FileNotFoundError(f'HDR file "{filename.absolute()}" does not exist or is not a valid .hdr file.')
     return hdr_content
 
-def run_gui(logging_level = logging.INFO):
 
+def run_gui(logging_level=logging.INFO):
+    """
+    Run conversion GUI
+
+    Starts a GUI for converting .mib data to other formats, while also reshaping the data, rechunking the data, and adding various metadata and calibrations.
+
+    Output is logged during operation.
+
+    :param logging_level: The logging level to use
+    :return:
+    """
     logger.setLevel(logging_level)
 
     mygui = QtWidgets.QApplication(sys.argv)
@@ -2081,6 +3006,7 @@ def run_gui(logging_level = logging.INFO):
     logger.debug('Showing mainwindow')
     mainwindow.show()
     sys.exit(mygui.exec_())
+
 
 if __name__ == '__main__':
     logger.info('starting GUI')

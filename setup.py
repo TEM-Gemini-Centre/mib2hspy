@@ -21,7 +21,7 @@ setup(
     install_requires=[
         "PyQt5",
         "numpy",
-        "pyxem==0.13.3",
+        "pyxem>=0.13.3",
         "pathlib",
         "tabulate",
         "datetime",
