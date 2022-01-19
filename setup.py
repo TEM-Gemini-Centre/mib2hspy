@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name='mib2hspy',
     version='0.1.1',
-    license='GPLv3',
+    license='mit',
     author='Emil Christiansen',
     author_email='emil.christiansen@ntnu.no',
     description="Converting .mib data to hspy supported formats",
@@ -11,7 +11,7 @@ setup(
     classifiers=[
         "Programming Language :: Python :: 3.8",
         "Intended Audience :: Science/Research",
-        "License :: GNU General Public License v3 (GPLv3)",
+        "License :: MIT",
         "Natural Language :: English",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering",
@@ -20,14 +20,13 @@ setup(
     packages=find_packages(),
     install_requires=[
         "PyQt5",
-        "hyperspy==1.5.2",
-        "pyxem",
         "numpy",
-        "matplotlib",
+        "pyxem>=0.13.3",
         "pathlib",
         "tabulate",
         "datetime",
-        "pandas"
+        "pandas",
+        "openpyxl",
     ],
     package_data={
         "": ["LICENSE", "README.md"],
