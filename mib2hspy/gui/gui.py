@@ -2524,13 +2524,17 @@ class SignalModelView(QtWidgets.QWidget):
         self._ndx_spinbox.blockSignals(False)
         self._ndy_spinbox.blockSignals(False)
 
+        # Check signal datastack size and set color of widgets based on the comparison.
         if self._model.signal is None:
             color = 'lightblue'
         else:
-            if self._model.signal.axes_manager[0].size == self._nx_spinbox.value() * self._ny_spinbox.value():
+            if np.prod(self._model.signal.axes_manager.shape) == np.prod(
+                    [self._nx_spinbox.value(), self._ny_spinbox.value(), self._ndx_spinbox.value(),
+                     self._ndy_spinbox.value()]):
                 color = 'lightgreen'
             else:
                 color = 'red'
+
         logger.debug(f'Setting background colors of shape spin boxes to {color}')
         style_sheet_prefix = 'QSpinBox { background-color : '
         style_sheet_suffix = '; }'
